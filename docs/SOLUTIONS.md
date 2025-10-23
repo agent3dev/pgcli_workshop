@@ -29,9 +29,9 @@ Respuestas completas a todos los ejercicios.
 
 ```sql
 -- Resultado típico:
--- clientes_unicos: ~5,000
--- total_filas: 50,000
--- filas_redundantes: 45,000
+-- clientes_unicos: ~20,000
+-- total_filas: 200,000
+-- filas_redundantes: 180,000
 
 -- Es decir, 90% de redundancia!
 ```
@@ -77,8 +77,8 @@ CREATE TABLE clientes (
 ### Solución 2.2: Migración verificada
 
 ```sql
--- Resultado esperado: ~5,000 clientes únicos
--- vs 50,000 filas en pedidos_completos
+-- Resultado esperado: ~20,000 clientes únicos
+-- vs 200,000 filas en pedidos_completos
 ```
 
 ### Solución 2.3: Tabla productos

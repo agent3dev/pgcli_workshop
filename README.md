@@ -182,7 +182,7 @@ Dentro de pgcli:
 
 ```sql
 SELECT COUNT(*) FROM productos;
--- Debe mostrar 100,000
+-- Debe mostrar 500,000
 ```
 
 ---

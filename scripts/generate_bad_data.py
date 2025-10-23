@@ -93,7 +93,7 @@ def generate_bad_orders(conn, num_orders=50000):
 
     # Generate some "customers" (repeated data!)
     customers = []
-    for _ in range(5000):
+    for _ in range(20000):
         customers.append({
             'nombre': fake.name(),
             'email': fake.email(),
@@ -228,15 +228,15 @@ def main():
 
     try:
         # Generate products
-        generate_products(conn, num_products=100000)
+        generate_products(conn, num_products=500000)
         print()
 
         # Generate denormalized orders
-        generate_bad_orders(conn, num_orders=50000)
+        generate_bad_orders(conn, num_orders=200000)
         print()
 
         # Generate simple orders
-        generate_simple_orders(conn, num_orders=50000)
+        generate_simple_orders(conn, num_orders=200000)
         print()
 
         print("=" * 50)
