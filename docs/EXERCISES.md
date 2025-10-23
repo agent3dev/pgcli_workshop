@@ -29,7 +29,8 @@ SELECT * FROM pedidos_completos LIMIT 3;
 SELECT
     COUNT(DISTINCT cliente_email) as clientes_unicos,
     COUNT(*) as total_filas,
-    COUNT(*) - COUNT(DISTINCT cliente_email) as filas_redundantes;
+    COUNT(*) - COUNT(DISTINCT cliente_email) as filas_redundantes
+FROM pedidos_completos;
 
 -- Ver clientes más repetidos
 SELECT
