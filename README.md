@@ -66,9 +66,10 @@ sudo make build      # Construir contenedor
 sudo make start      # Iniciar workshop
 sudo make shell      # Abrir pgcli (SQL shell with auto-complete)
 sudo make pgadmin    # Abrir pgAdmin web interface
-sudo make reset      # Resetear BD a estado inicial
+sudo make reset      # Resetear BD a estado inicial (p=N o=N para tamaño dataset)
 sudo make benchmark  # Medir rendimiento de queries
 sudo make logs       # Ver logs de PostgreSQL
+sudo make bash       # Abrir bash shell en el contenedor
 sudo make stop       # Detener contenedor
 sudo make clean      # Borrar todo (incluyendo datos)
 ```
@@ -108,6 +109,7 @@ workshop/
 │   ├── 01_bad_schema.sql      # Schema malo (inicio)
 │   ├── 02_normalized_schema.sql # Solución normalización
 │   ├── 03_indexes.sql          # Solución índices
+│   ├── 04_migration.sql        # Migración de datos (ejecutar después de 01, antes de 02)
 │   └── queries/
 │       ├── slow.sql            # Queries sin optimizar
 │       └── fast.sql            # Queries optimizadas

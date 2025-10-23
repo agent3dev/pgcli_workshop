@@ -154,7 +154,18 @@ CREATE TABLE items_pedido (
 );
 ```
 
-### Paso 2.5: Verificar normalización
+### Paso 2.5: Migrar datos (opcional - usa script)
+
+Si quieres migrar automáticamente todos los datos del esquema malo al normalizado:
+
+```sql
+-- Ejecuta el script de migración DESPUÉS de crear las tablas normalizadas
+\i sql/04_migration.sql
+```
+
+**Importante**: Ejecuta la migración ANTES de crear el esquema normalizado (02_normalized_schema.sql), porque este script elimina las tablas viejas.
+
+### Paso 2.6: Verificar normalización
 
 **Checklist 3FN**:
 - [ ] Cada tabla tiene clave primaria

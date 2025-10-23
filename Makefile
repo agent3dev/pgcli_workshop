@@ -49,7 +49,7 @@ start:
 				docker start workshop-pgadmin; \
 			else \
 				echo "📦 Starting pgAdmin..."; \
-				docker run -d --name workshop-pgadmin -p 80:80 --add-host host.docker.internal:host-gateway -e PGADMIN_DEFAULT_EMAIL=admin@workshop.com -e PGADMIN_DEFAULT_PASSWORD=admin -e PGADMIN_CONFIG_SERVERS_JSON='{"workshop_db": {"Name": "Workshop DB", "Group": "Servers", "Host": "host.docker.internal", "Port": 5432, "Username": "workshop_user", "Password": "workshop_pass", "Database": "workshop"}}' dpage/pgadmin4; \
+				docker run -d --name workshop-pgadmin -p 80:80 -v workshop-pgadmin-data:/var/lib/pgadmin --add-host host.docker.internal:host-gateway -e PGADMIN_DEFAULT_EMAIL=admin@workshop.com -e PGADMIN_DEFAULT_PASSWORD=admin -e PGADMIN_CONFIG_SERVERS_JSON='{"workshop_db": {"Name": "Workshop DB", "Group": "Servers", "Host": "host.docker.internal", "Port": 5432, "Username": "workshop_user", "Password": "workshop_pass", "Database": "workshop"}}' dpage/pgadmin4; \
 			fi; \
 		fi
 	@echo "⏳ Waiting for PostgreSQL to be ready..."
@@ -69,7 +69,7 @@ stop:
 
 reset:
 	@echo "🔄 Resetting database..."
-	@docker exec workshop reset-db
+	@docker exec workshop reset-db $(if $(p),-p $(p)) $(if $(o),-o $(o))
 	@echo ""
 	@echo "✅ Database reset complete!"
 	@echo "   Connect with: make shell"
@@ -77,7 +77,7 @@ reset:
 clean:
 	@echo "🗑️  Removing containers and data..."
 	@docker rm -f workshop workshop-pgadmin 2>/dev/null || true
-	@docker volume rm workshop-data 2>/dev/null || true
+	@docker volume rm workshop-data workshop-pgadmin-data 2>/dev/null || true
 	@echo "✅ All data removed"
 
 shell:

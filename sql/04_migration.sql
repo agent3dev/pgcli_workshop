@@ -2,10 +2,12 @@
 -- DATA MIGRATION: From Bad Schema to Normalized
 -- ==================================================
 
--- 1. Migrate categories (deduplicate from productos)
+-- Bad tables are already named productos_bad and pedidos_bad
+
+-- 1. Migrate categories (deduplicate from productos_bad)
 INSERT INTO categorias (nombre)
 SELECT DISTINCT categoria_nombre
-FROM productos
+FROM productos_bad
 WHERE categoria_nombre IS NOT NULL
 ORDER BY categoria_nombre;
 
@@ -19,17 +21,17 @@ SELECT
     c.categoria_id,
     p.fecha_creacion,
     p.activo
-FROM productos p
+FROM productos_bad p
 LEFT JOIN categorias c ON c.nombre = p.categoria_nombre;
 
 -- 3. Migrate clients (deduplicate from pedidos_completos)
 INSERT INTO clientes (nombre, email, telefono)
-SELECT DISTINCT
+SELECT DISTINCT ON (cliente_email)
     cliente_nombre,
     cliente_email,
     cliente_telefono
 FROM pedidos_completos
-ORDER BY cliente_email;
+ORDER BY cliente_email, fecha_pedido;
 
 -- 4. Migrate addresses (one per client)
 INSERT INTO direcciones (cliente_id, calle, ciudad, codigo_postal, es_principal)
