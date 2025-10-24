@@ -39,3 +39,6 @@ WORKDIR /workshop
 
 # PostgreSQL runs on port 5432
 EXPOSE 5432
+
+# Volume for pgadmin data or files
+VOLUME /pgadmin

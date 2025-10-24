@@ -9,6 +9,7 @@ import psycopg2.extras
 import os
 from datetime import datetime, timedelta
 import random
+import argparse
 
 fake = Faker(['es_ES'])
 
@@ -77,7 +78,7 @@ def generate_products(conn, num_products=100000):
     # Insert using execute_values
     psycopg2.extras.execute_values(
         cur,
-        "INSERT INTO productos (nombre, descripcion, precio, stock, categoria_id, categoria_nombre, activo) VALUES %s",
+        "INSERT INTO productos_bad (nombre, descripcion, precio, stock, categoria_id, categoria_nombre, activo) VALUES %s",
         data
     )
     conn.commit()
@@ -208,7 +209,7 @@ def generate_simple_orders(conn, num_orders=50000):
                 cur.mogrify("(%s, %s, %s, %s)", (cliente_id, fecha, total, estado)).decode('utf-8')
             )
 
-        query = f"INSERT INTO pedidos (cliente_id, fecha_pedido, total, estado) VALUES {','.join(values)}"
+        query = f"INSERT INTO pedidos_bad (cliente_id, fecha_pedido, total, estado) VALUES {','.join(values)}"
         cur.execute(query)
         conn.commit()
 
@@ -219,8 +220,16 @@ def generate_simple_orders(conn, num_orders=50000):
     print(f"  ✅ {num_orders:,} simple orders created")
 
 def main():
+    parser = argparse.ArgumentParser(description="Generate bad data for database workshop")
+    parser.add_argument('-p', '--products', type=int, default=500000, help='Number of products to generate')
+    parser.add_argument('-o', '--orders', type=int, default=200000, help='Number of orders to generate')
+
+    args = parser.parse_args()
+
     print("=" * 50)
     print("DATA GENERATOR - Workshop de Bases de Datos")
+    print(f"Products: {args.products:,}")
+    print(f"Orders: {args.orders:,}")
     print("=" * 50)
     print()
 
@@ -228,15 +237,15 @@ def main():
 
     try:
         # Generate products
-        generate_products(conn, num_products=500000)
+        generate_products(conn, num_products=args.products)
         print()
 
         # Generate denormalized orders
-        generate_bad_orders(conn, num_orders=200000)
+        generate_bad_orders(conn, num_orders=args.orders)
         print()
 
         # Generate simple orders
-        generate_simple_orders(conn, num_orders=200000)
+        generate_simple_orders(conn, num_orders=args.orders)
         print()
 
         print("=" * 50)

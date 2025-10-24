@@ -38,7 +38,7 @@ CREATE TABLE pedidos_completos (
 );
 
 -- Also create a products table for queries (still denormalized)
-CREATE TABLE productos (
+CREATE TABLE productos_bad (
     producto_id SERIAL PRIMARY KEY,
     nombre VARCHAR(200),
     descripcion TEXT,
@@ -51,7 +51,7 @@ CREATE TABLE productos (
 );
 
 -- And an orders table (will be used after normalization)
-CREATE TABLE pedidos (
+CREATE TABLE pedidos_bad (
     pedido_id SERIAL PRIMARY KEY,
     cliente_id INT,  -- Will be foreign key later
     fecha_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
