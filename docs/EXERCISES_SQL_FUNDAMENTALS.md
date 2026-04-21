@@ -1,9 +1,13 @@
 # Ejercicios — SQL Fundamentals
-## Módulo 2: DDL, DML, JOINs, Vistas, Funciones, Procedimientos y Triggers
+## Módulo 2: DDL, DML, JOINs, CTEs, Vistas, Window Functions, Funciones, Procedimientos, Triggers y Transacciones
 
-> **Prerequisito:** Completar el Módulo 1 (Normalización e Índices).  
+> **Prerequisito:** Completar el Módulo 1 (Normalización e Índices) — ejercicios 1–4 en `EXERCISES.md`.  
 > El esquema normalizado (`02_normalized_schema.sql`) debe estar cargado.  
-> Ejecutar los scripts en orden: `05_ddl.sql` → `11_triggers.sql`
+> Ejecutar los scripts en orden: `05_ddl.sql` → `12_transactions.sql`
+>
+> **Nota sobre numeración:** Los ejercicios de este módulo están numerados del 5 al 12
+> para coincidir con los archivos SQL (`05_ddl.sql`, `06_dml.sql`, …, `12_transactions.sql`).
+> No hay conflicto con el Módulo 1: los ejercicios 1–4 son de normalización e índices.
 
 ---
 
@@ -121,9 +125,10 @@ Una vista es un **SELECT guardado** que se comporta como tabla virtual.
 No almacena datos — ejecuta la query cada vez que haces SELECT sobre ella.
 
 ### 8.1 Crear y usar una vista
-1. Crea `v_resumen_pedidos` con: pedido_id, nombre del cliente, email, fecha, total, estado y cantidad de items.
-2. Consulta la vista para ver solo pedidos pendientes.
-3. ¿Puedes hacer un `UPDATE` a través de una vista simple? Prueba actualizar el estado.
+1. Observa `v_pedidos_simples` (vista sin GROUP BY sobre una sola tabla).
+2. Prueba hacer `UPDATE v_pedidos_simples SET estado = 'procesando' WHERE pedido_id = 1;` — ¿funciona?
+3. Ahora intenta el mismo UPDATE sobre `v_resumen_pedidos` (que usa GROUP BY + JOIN). ¿Qué error da PostgreSQL?
+4. **Regla:** una vista es actualizable solo si mapea 1:1 a una tabla — sin GROUP BY, DISTINCT, UNION ni subqueries en el FROM.
 
 ### 8.2 Vista con agregación
 Crea `v_clientes_stats` que muestre para cada cliente: total de pedidos, total gastado, ticket promedio y fecha del último pedido.  
@@ -241,3 +246,59 @@ Usa `information_schema.triggers` para listar todos los triggers del schema publ
 **Desafío:**
 1. `AFTER DELETE` en `items_pedido`: restaura el stock y actualiza el total del pedido.
 2. `BEFORE UPDATE` en `productos`: impide que el precio baje más del 50% en una sola operación.
+
+---
+
+## Ejercicio 12 — Transacciones
+
+> Archivo: `sql/12_transactions.sql`
+
+Una transacción agrupa varias operaciones en una unidad **atómica**: o todas se aplican (`COMMIT`) o ninguna (`ROLLBACK`). Es la base de la integridad en cualquier base de datos relacional.
+
+```
+BEGIN → operaciones → COMMIT   ✅ todo guardado
+BEGIN → operaciones → ROLLBACK ❌ todo deshecho
+```
+
+### 12.1 BEGIN / COMMIT
+1. Abre una transacción e inserta un cliente y su primer pedido en el mismo `BEGIN…COMMIT`.
+2. Verifica con un SELECT que ambas filas existen después del COMMIT.
+3. ¿Qué pasa si haces el SELECT de verificación *antes* del COMMIT desde otra sesión (`make shell` en otra terminal)?
+
+### 12.2 BEGIN / ROLLBACK
+1. Abre una transacción y actualiza `precio = 0` en todos los productos activos.
+2. Verifica que el cambio es visible *dentro* de la transacción.
+3. Ejecuta `ROLLBACK` y verifica que los precios originales están intactos.
+
+### 12.3 SAVEPOINT
+1. Dentro de un `BEGIN`, inserta una categoría llamada `'TestTX'` y crea un `SAVEPOINT sp1`.
+2. Intenta insertar otra categoría `'TestTX'` (duplicado — fallará si hay UNIQUE).
+3. Ejecuta `ROLLBACK TO SAVEPOINT sp1` — ¿la primera inserción sigue existiendo?
+4. Haz `COMMIT`. ¿Qué quedó guardado?
+
+### 12.4 Error dentro de una transacción
+1. Ejecuta `BEGIN; SELECT 1/0;` — ¿qué mensaje da PostgreSQL?
+2. Intenta ejecutar otro SELECT dentro de la misma transacción. ¿Funciona?
+3. ¿Qué debes hacer para recuperar el control de la sesión?
+
+### 12.5 Demo con dos sesiones (requiere dos terminales)
+Abre **dos** pgcli con `make shell`:
+
+| Terminal A | Terminal B |
+|-----------|-----------|
+| `BEGIN;` | |
+| `UPDATE productos SET precio = 9999 WHERE producto_id = 1;` | |
+| | `SELECT precio FROM productos WHERE producto_id = 1;` — ¿qué ve? |
+| `COMMIT;` | |
+| | `SELECT precio FROM productos WHERE producto_id = 1;` — ¿cambió? |
+
+Explica el comportamiento con el nivel de aislamiento `READ COMMITTED` (el default de PostgreSQL).
+
+### 12.6 Preguntas de discusión
+1. ¿Qué diferencia hay entre un error de aplicación (división por cero en Python) y un error de BD dentro de una transacción?
+2. Los procedimientos del Ejercicio 10 no usan `BEGIN/COMMIT` explícito. ¿Por qué aun así son "seguros"? (Pista: `CALL` en PostgreSQL.)
+3. ¿Cuándo usarías `SAVEPOINT` en una aplicación real?
+
+**Desafío:**
+1. Escribe una transacción que cree un cliente, su dirección principal y un pedido con dos ítems. Si cualquier paso falla, que no quede nada guardado.
+2. Usando `SAVEPOINT`, inserta 3 ítems en un pedido. Si el 3er ítem falla por stock insuficiente, haz rollback solo al savepoint y confirma los primeros 2.

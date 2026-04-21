@@ -8,9 +8,28 @@
 \echo 'EJERCICIO 8 — VIEWS'
 \echo '══════════════════════════════════════════'
 
--- ── 8.1  Vista simple — resumen de pedidos ────────────────────
+-- ── 8.1  Vista simple — y por qué no siempre es actualizable ──
+-- Una vista SIN GROUP BY, DISTINCT, ni JOIN puede ser actualizable.
 
-CREATE VIEW v_resumen_pedidos AS
+CREATE OR REPLACE VIEW v_pedidos_simples AS
+SELECT pedido_id, cliente_id, fecha_pedido, total, estado
+FROM pedidos;
+
+-- SELECT funciona normalmente
+SELECT * FROM v_pedidos_simples ORDER BY fecha_pedido DESC LIMIT 5;
+
+-- UPDATE a través de una vista SIMPLE sí funciona en PostgreSQL
+-- (la vista apunta directamente a una sola tabla sin agregaciones)
+UPDATE v_pedidos_simples SET estado = 'procesando' WHERE pedido_id = 1;
+SELECT pedido_id, estado FROM v_pedidos_simples WHERE pedido_id = 1;
+
+-- Revertir para no romper los ejercicios siguientes
+UPDATE v_pedidos_simples SET estado = 'pendiente' WHERE pedido_id = 1;
+
+-- ── Ahora una vista con JOIN + GROUP BY — NO es actualizable ──
+-- Esto representa la mayoría de las vistas útiles del mundo real.
+
+CREATE OR REPLACE VIEW v_resumen_pedidos AS
 SELECT
     p.pedido_id,
     c.nombre            AS cliente,
@@ -24,7 +43,11 @@ INNER JOIN clientes    c  ON c.cliente_id = p.cliente_id
 LEFT  JOIN items_pedido ip ON ip.pedido_id = p.pedido_id
 GROUP BY p.pedido_id, c.nombre, c.email, p.fecha_pedido, p.total, p.estado;
 
--- Usar como tabla normal
+-- Intenta actualizar — PostgreSQL rechaza vistas con GROUP BY:
+-- UPDATE v_resumen_pedidos SET estado = 'enviado' WHERE pedido_id = 1;
+-- ERROR: cannot update view "v_resumen_pedidos"
+-- DETAIL: Views containing GROUP BY are not automatically updatable.
+
 SELECT * FROM v_resumen_pedidos ORDER BY fecha_pedido DESC LIMIT 10;
 
 -- Filtrar sobre la vista
@@ -34,7 +57,7 @@ ORDER BY total DESC;
 
 -- ── 8.2  Vista con agregación — estadísticas por cliente ──────
 
-CREATE VIEW v_clientes_stats AS
+CREATE OR REPLACE VIEW v_clientes_stats AS
 SELECT
     c.cliente_id,
     c.nombre,
@@ -54,7 +77,7 @@ SELECT nombre, email FROM v_clientes_stats WHERE total_pedidos = 0;
 
 -- ── 8.3  Vista — productos disponibles ───────────────────────
 
-CREATE VIEW v_productos_disponibles AS
+CREATE OR REPLACE VIEW v_productos_disponibles AS
 SELECT
     pr.producto_id,
     pr.nombre,
@@ -71,7 +94,7 @@ SELECT * FROM v_productos_disponibles;
 
 -- ── 8.4  Vista con STRING_AGG — productos por pedido ─────────
 
-CREATE VIEW v_pedido_detalle AS
+CREATE OR REPLACE VIEW v_pedido_detalle AS
 SELECT
     p.pedido_id,
     c.nombre                AS cliente,

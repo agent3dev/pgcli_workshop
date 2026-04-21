@@ -353,3 +353,112 @@ FOR EACH ROW EXECUTE FUNCTION fn_validar_precio();
 -- UPDATE productos SET precio = 1 WHERE producto_id = 1;  -- debe fallar
 -- UPDATE productos SET precio = precio * 0.6 WHERE producto_id = 1;  -- debe pasar
 ```
+
+---
+
+## Ejercicio 12 — Transacciones
+
+```sql
+-- 12.1 BEGIN / COMMIT
+BEGIN;
+INSERT INTO clientes (nombre, email) VALUES ('TX Test', 'tx@test.com') RETURNING cliente_id;
+-- Usar el cliente_id devuelto:
+INSERT INTO pedidos (cliente_id, total, estado) VALUES (<<cliente_id>>, 0, 'pendiente');
+COMMIT;
+
+-- 12.2 ROLLBACK
+BEGIN;
+UPDATE productos SET precio = precio * 0.01 WHERE activo = true;
+SELECT ROUND(AVG(precio)::NUMERIC, 4) FROM productos;  -- precio muy bajo dentro de la transacción
+ROLLBACK;
+SELECT ROUND(AVG(precio)::NUMERIC, 2) FROM productos;  -- precios originales
+
+-- 12.3 SAVEPOINT
+-- Nota: en psql/pgcli un error SQL aborta la transacción, por eso
+-- usamos DO $$ para capturar la excepción y ejecutar ROLLBACK TO SAVEPOINT.
+BEGIN;
+INSERT INTO categorias (nombre) VALUES ('TestTX');
+SAVEPOINT sp1;
+DO $$
+BEGIN
+    INSERT INTO categorias (nombre) VALUES ('TestTX');  -- falla por UNIQUE
+EXCEPTION
+    WHEN unique_violation THEN
+        RAISE NOTICE 'Duplicado capturado, hacemos ROLLBACK TO SAVEPOINT';
+END;
+$$;
+ROLLBACK TO SAVEPOINT sp1;                          -- vuelve al punto seguro
+-- 'TestTX' aún existe desde antes del savepoint
+SELECT * FROM categorias WHERE nombre = 'TestTX';
+COMMIT;
+DELETE FROM categorias WHERE nombre = 'TestTX';
+-- Resultado: una sola fila 'TestTX' fue guardada y luego limpiada
+
+-- 12.4 Error dentro de transacción
+BEGIN;
+SELECT 1/0;        -- ERROR: division by zero — transacción abortada
+SELECT 1;          -- ERROR: current transaction is aborted
+ROLLBACK;          -- único comando válido ahora
+
+-- 12.5 Respuesta: READ COMMITTED
+-- Terminal B ve el precio ORIGINAL antes del COMMIT de A.
+-- PostgreSQL usa READ COMMITTED por defecto: cada statement ve solo
+-- datos confirmados al momento en que ese statement comenzó.
+
+-- 12.6 Respuestas de discusión
+-- 1. Un error de aplicación no revierte la BD por sí solo; si estás
+--    en el medio de una transacción sin BEGIN explícito, cada statement
+--    es su propia transacción (autocommit). Con BEGIN explícito, el error
+--    aborta el bloque y requiere ROLLBACK.
+-- 2. CALL dentro de una sesión sin BEGIN explícito corre en autocommit;
+--    dentro de un BEGIN el procedimiento hereda la transacción del llamador.
+-- 3. SAVEPOINT es útil en loops o importaciones masivas donde quieres
+--    continuar después de un error en una fila sin abortar todo el lote.
+
+-- Desafío 1: cliente + dirección + pedido + ítems atómicos
+BEGIN;
+
+INSERT INTO clientes (nombre, email)
+VALUES ('Demo TX', 'demo.tx@email.com');
+
+INSERT INTO direcciones (cliente_id, calle, ciudad, es_principal)
+VALUES (
+    (SELECT cliente_id FROM clientes WHERE email = 'demo.tx@email.com'),
+    'Av. Principal 1', 'CDMX', true
+);
+
+INSERT INTO pedidos (cliente_id, total, estado)
+VALUES (
+    (SELECT cliente_id FROM clientes WHERE email = 'demo.tx@email.com'),
+    0, 'pendiente'
+);
+
+INSERT INTO items_pedido (pedido_id, producto_id, cantidad, precio_unitario)
+VALUES (
+    (SELECT pedido_id FROM pedidos
+     WHERE cliente_id = (SELECT cliente_id FROM clientes WHERE email = 'demo.tx@email.com')
+     ORDER BY fecha_pedido DESC LIMIT 1),
+    1, 2,
+    (SELECT precio FROM productos WHERE producto_id = 1)
+);
+
+COMMIT;
+
+-- Desafío 2: 3 ítems con SAVEPOINT, rollback del 3ro si falla
+BEGIN;
+
+INSERT INTO items_pedido (pedido_id, producto_id, cantidad, precio_unitario)
+VALUES (1, 1, 1, (SELECT precio FROM productos WHERE producto_id = 1));
+SAVEPOINT sp_item1;
+
+INSERT INTO items_pedido (pedido_id, producto_id, cantidad, precio_unitario)
+VALUES (1, 2, 1, (SELECT precio FROM productos WHERE producto_id = 2));
+SAVEPOINT sp_item2;
+
+-- Intento con stock excesivo (puede fallar si el trigger de stock está activo)
+-- INSERT INTO items_pedido (pedido_id, producto_id, cantidad, precio_unitario)
+-- VALUES (1, 3, 999999, 100);
+-- ROLLBACK TO SAVEPOINT sp_item2;  -- solo deshace el 3er ítem
+
+COMMIT;  -- guarda ítems 1 y 2
+```
