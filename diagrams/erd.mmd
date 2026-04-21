@@ -1,0 +1,60 @@
+erDiagram
+    clientes {
+        SERIAL      cliente_id      PK
+        VARCHAR100  nombre
+        VARCHAR100  email
+        VARCHAR20   telefono
+        TIMESTAMP   fecha_registro
+    }
+
+    direcciones {
+        SERIAL      direccion_id    PK
+        INT         cliente_id      FK
+        TEXT        calle
+        VARCHAR50   ciudad
+        VARCHAR10   codigo_postal
+        BOOLEAN     es_principal
+        TIMESTAMP   fecha_creacion
+    }
+
+    categorias {
+        SERIAL      categoria_id    PK
+        VARCHAR100  nombre
+        TEXT        descripcion
+    }
+
+    productos {
+        SERIAL      producto_id     PK
+        VARCHAR200  nombre
+        TEXT        descripcion
+        DECIMAL     precio
+        INT         stock
+        INT         categoria_id    FK
+        TIMESTAMP   fecha_creacion
+        BOOLEAN     activo
+    }
+
+    pedidos {
+        SERIAL      pedido_id               PK
+        INT         cliente_id              FK
+        INT         direccion_entrega_id    FK
+        TIMESTAMP   fecha_pedido
+        DECIMAL     total
+        VARCHAR20   estado
+    }
+
+    items_pedido {
+        SERIAL      item_id          PK
+        INT         pedido_id        FK
+        INT         producto_id      FK
+        INT         cantidad
+        DECIMAL     precio_unitario
+        DECIMAL     subtotal
+    }
+
+    clientes      ||--o{  direcciones   : "tiene"
+    clientes      ||--o{  pedidos       : "realiza"
+    direcciones   ||--o{  pedidos       : "entrega en"
+    categorias    ||--o{  productos     : "agrupa"
+    pedidos       ||--o{  items_pedido  : "contiene"
+    productos     ||--o{  items_pedido  : "incluido en"
