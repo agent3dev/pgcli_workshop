@@ -1,48 +1,33 @@
-# Workshop Speaker Script
-## PostgreSQL with pgcli — Full Workshop
+# PostgreSQL & MongoDB Workshop
+## A hands-on guide you can follow at your own pace
 
-> **Commands to run before starting:**
-> ```
-> make shell        # open pgcli for you
-> make reset        # if you need a fresh DB
-> ```
+This document walks you through every exercise in the workshop. Each section tells you what to run, what to look for, and why it matters. You don't need a presenter — just a terminal and the workshop environment running.
 
----
-
-## INTRO (~3 min)
-
-"Today we're going to work hands-on with PostgreSQL using pgcli — a smarter SQL shell with autocomplete, syntax highlighting, and multi-line editing.
-
-We'll go through two modules:
-- **Module 1** — Why bad schemas hurt you, how to fix them with normalization, and how indexes make queries fast.
-- **Module 2** — The SQL toolkit: DDL, DML, JOINs, views, functions, procedures, triggers, and transactions.
-
-We have a real e-commerce database with products, customers, orders and order items. Everything we do today applies directly to production databases."
-
----
-
-## MODULE 1 — Normalization & Indexes
-
----
-
-### Exercise 1 — The Bad Schema (~10 min)
-
-"Let's start by looking at what a bad schema looks like — and why it causes real problems."
-
+**Start here:**
 ```
-make reset
-make shell
+make setup    # first time only — builds the container
+make reset    # loads the starting database
+make shell    # opens pgcli
+```
+
+---
+
+## Module 1 — Normalization & Indexes
+
+---
+
+### Exercise 1 — The Bad Schema
+
+**What you're looking at:** A denormalized e-commerce database. Every order line repeats all the customer and product information on the same row.
+
+```sql
 \d pedidos_completos
 SELECT * FROM pedidos_completos LIMIT 3;
 ```
 
-**Ask the class:**
-> "What do you notice? What repeats on every row?"
+Notice what repeats across rows: the customer's name, email, and phone appear on every single order line they ever placed. Same for product names and prices.
 
-Point out:
-- Customer name, email, phone are duplicated on every order line
-- Product info is duplicated too
-- This is called a **denormalized** schema
+Run this to see the scale of the problem:
 
 ```sql
 SELECT
@@ -51,49 +36,53 @@ SELECT
     COUNT(*) - COUNT(DISTINCT cliente_email) AS filas_redundantes;
 ```
 
-**Say:** "We have ~20,000 customers but hundreds of thousands of rows. Every customer's data is stored as many times as they have order lines."
+There are ~20,000 unique customers but hundreds of thousands of rows. Every customer's data is stored as many times as they have order lines.
 
-**Anomalies — show each one:**
+**Why this hurts — the three anomalies:**
 
 ```sql
--- Update anomaly: change one email = update thousands of rows
+-- Update anomaly: changing one email means updating thousands of rows
 UPDATE pedidos_completos SET cliente_email = 'nuevo@email.com'
 WHERE cliente_email = 'alguno@email.com';
 
--- Deletion anomaly: delete orders = lose the customer forever
+-- Deletion anomaly: deleting orders loses the customer record entirely
 DELETE FROM pedidos_completos WHERE cliente_email = 'alguno@email.com';
 ```
 
-**Key point:** "Three types of anomalies: insert, update, delete. A good schema makes all three impossible."
+A well-designed schema makes all three anomalies (insert, update, delete) structurally impossible — not something you have to remember to handle in code.
 
 ---
 
-### Exercise 2 — Normalization (~10 min)
+### Exercise 2 — Normalization
 
-"The fix is 3rd Normal Form — each piece of information lives in exactly one place."
+**The fix:** 3rd Normal Form — each fact lives in exactly one place.
 
 ```
 \i sql/02_normalized_schema.sql
 \dt
 ```
 
-**Draw or describe the schema on the board:**
+The schema is now:
+
 ```
 clientes ──< pedidos ──< items_pedido >── productos >── categorias
    │
    └──< direcciones
 ```
 
-**Say:** "Now customers live in `clientes`. Products in `productos`. Orders link them together. If a customer changes their email — one row, one update."
+A customer's email lives in `clientes`. One row. If it changes, one `UPDATE`. Products live in `productos`. Orders in `pedidos`. The relationship between an order and a product lives in `items_pedido`.
 
-**Walk through the constraints:**
+Look at what the constraints buy you:
+
 ```sql
 \d productos
 ```
-- `CHECK (precio > 0)` — the DB enforces business rules
-- `GENERATED ALWAYS AS` on `subtotal` — computed automatically, can't be corrupted
 
-**Load the migration:**
+- `CHECK (precio > 0)` — the database rejects a negative price. Your app doesn't have to.
+- `GENERATED ALWAYS AS` on `subtotal` — computed from `cantidad * precio_unitario`, always correct, can't be corrupted by a bad `INSERT`.
+
+Load the data migration:
+
 ```
 \i sql/04_migration.sql
 SELECT COUNT(*) FROM clientes;
@@ -102,45 +91,43 @@ SELECT COUNT(*) FROM productos;
 
 ---
 
-### Exercise 3 — Diagnosing Performance (~8 min)
+### Exercise 3 — Diagnosing Performance
 
-"Now let's see why indexes matter. The normalized schema has ~500k products."
+**The problem:** Even a well-normalized schema is slow without indexes. The normalized schema has ~500k products.
 
 ```sql
 \timing on
 SELECT * FROM productos WHERE descripcion LIKE '%laptop%';
 ```
 
-**Ask:** "How long did that take? Let's look at why."
+That was slow. Here's why:
 
 ```sql
 EXPLAIN ANALYZE
 SELECT * FROM productos WHERE descripcion LIKE '%laptop%';
 ```
 
-**Point out in the output:**
-- `Seq Scan` — PostgreSQL read every single row
-- `rows=500000` — examined all of them
-- Cost is high
-
-**Say:** "This is a full table scan. In production with millions of rows, this kills your database."
+Look for `Seq Scan` in the output. PostgreSQL read every single row in the table to find matches. With 500k rows that's expensive — with millions it becomes a production incident.
 
 ---
 
-### Exercise 4 — Creating Indexes (~10 min)
+### Exercise 4 — Creating Indexes
 
 ```
 \i sql/03_indexes.sql
 ```
 
 **B-Tree index — for ranges and equality:**
+
 ```sql
 CREATE INDEX idx_productos_precio ON productos(precio);
 EXPLAIN ANALYZE SELECT * FROM productos WHERE precio BETWEEN 100 AND 500;
 ```
-Show the difference: `Seq Scan` vs `Index Scan`. The cost drops dramatically.
+
+The plan changes from `Seq Scan` to `Index Scan`. The cost drops dramatically because PostgreSQL can jump directly to the relevant rows instead of reading everything.
 
 **GIN index — for full-text search:**
+
 ```sql
 CREATE INDEX idx_productos_busqueda ON productos
 USING GIN(to_tsvector('spanish', nombre || ' ' || descripcion));
@@ -151,108 +138,121 @@ WHERE to_tsvector('spanish', nombre || ' ' || descripcion)
       @@ to_tsquery('spanish', 'laptop');
 ```
 
-**Key points on trade-offs:**
-> "Indexes speed up reads but slow down writes. Every INSERT, UPDATE, DELETE also updates all indexes on that table. Don't index everything — index what you query."
+GIN (Generalized Inverted Index) is designed for searches inside text and arrays. A B-Tree won't help here.
 
-**Partial index:**
+**Partial index — index only what you query:**
+
 ```sql
 CREATE INDEX idx_productos_disponibles ON productos(precio)
 WHERE activo = true AND stock > 0;
 ```
-> "Only indexes the rows you actually query. Smaller, faster, smarter."
+
+This index only covers active in-stock products — the rows that actually get queried on the storefront. Smaller, faster, and the optimizer uses it for the right queries.
+
+**The trade-off to keep in mind:** indexes speed up reads but slow down every write — every `INSERT`, `UPDATE`, and `DELETE` also has to update all indexes on that table. Don't index everything. Index what you query.
 
 ---
 
-## MODULE 2 — SQL Fundamentals
+## Module 2 — SQL Fundamentals
 
-> Run `\i sql/test_seed.sql` if you want a small clean dataset for demos.
+> Run `\i sql/test_seed.sql` if you want a small, clean dataset for experimenting.
 
 ---
 
-### Exercise 5 — DDL (~7 min)
+### Exercise 5 — DDL
 
-"DDL — Data Definition Language — is how you define and evolve your schema."
+DDL (Data Definition Language) is how you define and evolve your schema. In production you never drop and recreate tables — you `ALTER` them.
 
 ```
 \i sql/05_ddl.sql
 ```
 
-**Live demo — ALTER TABLE:**
+**Adding a column without downtime:**
+
 ```sql
 ALTER TABLE productos ADD COLUMN descuento NUMERIC(5,2) DEFAULT 0
     CHECK (descuento BETWEEN 0 AND 100);
 \d productos
 ```
 
-**Key point:** "In production you never recreate tables — you ALTER them. PostgreSQL lets you add columns, change types, add/drop constraints — all without downtime in most cases."
+The column is added, the `DEFAULT` fills existing rows, and the `CHECK` constraint rejects anything outside 0–100 — all in one statement, no table lock for most cases.
 
-**Show the `resenas` table creation from the script.**
-Point out the composite UNIQUE constraint:
+**Composite UNIQUE constraint:**
+
 ```sql
 UNIQUE (producto_id, cliente_id)
 ```
-> "One review per customer per product — enforced at the DB level, not just in your app."
+
+One review per customer per product, enforced at the database level. Your app doesn't have to check for duplicates before inserting.
 
 ---
 
-### Exercise 6 — DML (~7 min)
+### Exercise 6 — DML
 
-"DML — Data Manipulation Language — INSERT, UPDATE, DELETE, and SELECT."
+DML (Data Manipulation Language) — `INSERT`, `UPDATE`, `DELETE`, `SELECT`.
 
 ```
 \i sql/06_dml.sql
 ```
 
-**RETURNING clause — very useful:**
+**`RETURNING` — get the generated ID without a second query:**
+
 ```sql
 INSERT INTO clientes (nombre, email)
 VALUES ('Demo', 'demo@test.com')
 RETURNING cliente_id;
 ```
-> "You get the generated ID back immediately. No need for a second SELECT."
 
-**UPDATE with subquery:**
+The generated `cliente_id` comes back immediately in the result. No need to run `SELECT lastval()` or a second `SELECT`.
+
+**`UPDATE` with a subquery:**
+
 ```sql
 UPDATE productos SET activo = false WHERE stock = 0;
 ```
 
-**DELETE with NOT EXISTS:**
+**`DELETE` with `NOT EXISTS`:**
+
 ```sql
 DELETE FROM pedidos WHERE estado = 'cancelado'
 AND NOT EXISTS (SELECT 1 FROM items_pedido WHERE pedido_id = pedidos.pedido_id);
 ```
-> "Only deletes empty cancelled orders. The NOT EXISTS subquery is a common and efficient pattern."
+
+Only deletes cancelled orders that have no items. The `NOT EXISTS` subquery is a common and efficient pattern for conditional deletes.
 
 ---
 
-### Exercise 7 — JOINs (~10 min)
+### Exercise 7 — JOINs
 
-"JOINs are how you query across multiple tables. This is where relational databases shine."
+JOINs are how you query across multiple tables. The relational model was designed around this.
 
 ```
 \i sql/07_joins.sql
 ```
 
-**INNER JOIN — matching rows only:**
+**`INNER JOIN` — only rows with a match on both sides:**
+
 ```sql
 SELECT c.nombre, p.pedido_id, p.total, p.estado
 FROM pedidos p
 INNER JOIN clientes c ON c.cliente_id = p.cliente_id;
 ```
 
-**LEFT JOIN — find what's missing:**
+**`LEFT JOIN` — find what's missing:**
+
 ```sql
 SELECT c.nombre, c.email
 FROM clientes c
 LEFT JOIN pedidos p ON p.cliente_id = c.cliente_id
 WHERE p.pedido_id IS NULL;
 ```
-> "Customers who have never ordered. The LEFT JOIN keeps all customers; the IS NULL filter keeps only those with no match."
 
-**Ask the class:**
-> "When would you use a RIGHT JOIN? (Almost never — you can always rewrite as a LEFT JOIN by swapping the tables.)"
+This finds customers who have never placed an order. The `LEFT JOIN` keeps all customers regardless of whether they have a match in `pedidos`. The `IS NULL` filter keeps only those with no match.
+
+`RIGHT JOIN` exists but you'll rarely use it — you can always rewrite it as a `LEFT JOIN` by swapping the tables, which is easier to read.
 
 **Multi-table join:**
+
 ```sql
 SELECT c.nombre, pr.nombre AS producto, ip.cantidad, ip.subtotal
 FROM items_pedido ip
@@ -261,7 +261,8 @@ INNER JOIN clientes c ON c.cliente_id = p.cliente_id
 INNER JOIN productos pr ON pr.producto_id = ip.producto_id;
 ```
 
-**Aggregation with JOIN:**
+**Aggregation with `JOIN`:**
+
 ```sql
 SELECT c.nombre, COUNT(p.pedido_id) AS pedidos, COALESCE(SUM(p.total), 0) AS gastado
 FROM clientes c
@@ -270,149 +271,167 @@ GROUP BY c.cliente_id, c.nombre
 ORDER BY gastado DESC;
 ```
 
+`COALESCE` turns `NULL` (customers with no orders) into `0` for the sum.
+
 ---
 
-### Exercise 8 — Views (~8 min)
+### Exercise 8 — Views
 
-"A view is a saved SELECT. It behaves like a table but stores no data — it runs the query every time."
+A view is a saved `SELECT`. It behaves like a table but stores no data — it runs the underlying query every time you query it.
 
 ```
 \i sql/08_views.sql
 ```
 
-**Show the updatable view:**
+**Updatable view:**
+
 ```sql
 SELECT * FROM v_pedidos_simples LIMIT 5;
 UPDATE v_pedidos_simples SET estado = 'procesando' WHERE pedido_id = 1;
 ```
-> "Works! A simple view — no GROUP BY, no JOINs, one table — PostgreSQL can update through it."
 
-**Show the non-updatable view:**
+That works. A simple view with no `GROUP BY`, no `JOIN`, backed by a single table — PostgreSQL can figure out which row to update.
+
+**Non-updatable view:**
+
 ```sql
 -- This will fail:
 UPDATE v_resumen_pedidos SET estado = 'enviado' WHERE pedido_id = 1;
 ```
-> "PostgreSQL refuses. The view uses GROUP BY — there's no single row to update. This is the rule: a view is updatable only if it maps 1-to-1 to a single table."
+
+PostgreSQL refuses. The view uses `GROUP BY` — there's no single underlying row that maps to each result row. The rule: a view is only updatable if it maps 1-to-1 to a single table.
 
 **Aggregation view:**
+
 ```sql
 SELECT * FROM v_clientes_stats ORDER BY total_gastado DESC NULLS LAST;
 SELECT nombre, email FROM v_clientes_stats WHERE total_pedidos = 0;
 ```
-> "Views let you encapsulate complex queries and reuse them everywhere."
+
+Views let you encapsulate complex queries and reuse them across your application without duplicating SQL.
 
 ---
 
-### Exercise 9 — Functions (~8 min)
+### Exercise 9 — Functions
 
-"Functions let you package SQL logic and call it by name. Two styles in PostgreSQL."
+Functions package SQL logic so you can call it by name. PostgreSQL supports two styles.
 
 ```
 \i sql/09_functions.sql
 ```
 
-**SQL language — simple:**
+**SQL-language functions — for simple expressions:**
+
 ```sql
 SELECT nombre, total_pedidos_cliente(cliente_id), gasto_total_cliente(cliente_id)
 FROM clientes;
 ```
 
-**PL/pgSQL — with logic:**
+**PL/pgSQL — for logic with conditionals:**
+
 ```sql
 SELECT nombre, clasificar_cliente(cliente_id) AS segmento
 FROM clientes;
 ```
-> "VIP, Regular, or Nuevo — computed on the fly. The classification logic lives in the DB, not scattered across your app."
 
-**Functions with validation:**
+The function returns `VIP`, `Regular`, or `Nuevo` based on order history. The classification logic lives in the database — every application that connects to this DB gets the same result without duplicating the logic.
+
+**Input validation:**
+
 ```sql
-SELECT precio_con_descuento(100, 20);   -- works
-SELECT precio_con_descuento(100, 150);  -- raises exception
+SELECT precio_con_descuento(100, 20);   -- works: returns 80
+SELECT precio_con_descuento(100, 150);  -- raises exception: discount > 100%
 ```
 
-**Key point:**
-> "Functions are reusable, testable, and version-controlled. Put your business logic here and every app that touches this DB benefits."
+The function raises an error before any bad data reaches your tables.
 
 ---
 
-### Exercise 10 — Procedures (~7 min)
+### Exercise 10 — Procedures
 
-"Procedures are like functions but they don't return a value — they perform actions. You call them with CALL."
+Procedures are like functions but they perform actions rather than returning a value. You call them with `CALL`.
 
 ```
 \i sql/10_procedures.sql
 ```
 
-**State machine demo:**
+**State machine:**
+
 ```sql
 CALL actualizar_estado_pedido(1, 'procesando');
 CALL actualizar_estado_pedido(1, 'enviado');
-CALL actualizar_estado_pedido(999, 'enviado');  -- fails: pedido doesn't exist
+CALL actualizar_estado_pedido(999, 'enviado');  -- fails: order doesn't exist
 ```
-> "The procedure enforces the business rule. You can't skip states or modify cancelled orders."
 
-**RETURNS TABLE:**
+The procedure enforces valid state transitions. You can't skip states or modify a cancelled order. The rule lives in the database, not in whichever service happens to be calling it today.
+
+**When to use `RETURNS TABLE` instead:**
+
 ```sql
 SELECT * FROM pedidos_activos_cliente(1);
 ```
-> "When you need to return rows, use a FUNCTION with RETURNS TABLE — not a procedure."
 
-**Complex procedure:**
+When you need to return rows, use a `FUNCTION` with `RETURNS TABLE` — not a procedure.
+
+**Compound operation:**
+
 ```sql
 CALL agregar_item_pedido(1, 3, 2);
 SELECT stock FROM productos WHERE producto_id = 3;
 ```
-> "One CALL — validates stock, inserts the item, reduces stock, recalculates the order total. All in one atomic operation."
+
+One `CALL` validates stock availability, inserts the item, decrements stock, and recalculates the order total — all atomically.
 
 ---
 
-### Exercise 11 — Triggers (~8 min)
+### Exercise 11 — Triggers
 
-"A trigger fires automatically when something happens to a table. Invisible, automatic enforcement."
+A trigger fires automatically when something happens to a table. It's invisible enforcement — correct behavior happens whether the write comes from your app, a migration script, or a direct psql session.
 
 ```
 \i sql/11_triggers.sql
 ```
 
-**Two parts — always:**
+Every trigger has two parts:
 1. A function that `RETURNS TRIGGER`
-2. The trigger that binds it to a table + event
+2. The trigger definition that binds it to a table and event
 
 **Audit trigger:**
+
 ```sql
 UPDATE pedidos SET estado = 'procesando' WHERE pedido_id = 1;
 UPDATE pedidos SET estado = 'enviado' WHERE pedido_id = 1;
 SELECT * FROM pedidos_log;
 ```
-> "Every state change is recorded automatically. No developer has to remember to log it."
 
-**Validation trigger (BEFORE):**
+Every state change is recorded automatically in `pedidos_log`. No developer has to remember to log it. No code path can bypass it.
+
+**Validation trigger (`BEFORE`):**
+
 ```sql
--- Try to insert more items than stock allows:
+-- Try to insert more items than available stock:
 INSERT INTO items_pedido (pedido_id, producto_id, cantidad, precio_unitario)
 VALUES (1, 1, 999999, 100);
 ```
-> "The trigger fires BEFORE the INSERT and blocks it. The row never gets written."
 
-**Show NEW and OLD:**
-- `NEW` — the row being inserted/updated
-- `OLD` — the row before the update/delete
-- Return `NEW` to allow; return `NULL` to cancel (in BEFORE triggers)
+The trigger fires `BEFORE` the `INSERT` and blocks it. The row never gets written.
 
-**Discussion question to throw at the class:**
-> "Exercise 10's procedure and Exercise 11's trigger both validate stock. Is that redundant? — Actually no. The trigger is a safety net at the DB layer. The procedure is the intended path. Belt and suspenders."
+Inside a trigger function, `NEW` is the row being inserted or updated, `OLD` is the row before the change. Return `NEW` to allow the operation, return `NULL` to cancel it (in `BEFORE` triggers).
+
+**Note on Exercise 10 vs. Exercise 11:** The procedure and the trigger both validate stock. That's not redundant — the trigger is a safety net at the database layer, the procedure is the intended path. Belt and suspenders: if something bypasses the procedure, the trigger catches it.
 
 ---
 
-### Exercise 12 — Transactions (~10 min)
+### Exercise 12 — Transactions
 
-"A transaction is an atomic unit of work. Either everything commits or nothing does. This is the foundation of data integrity."
+A transaction is an atomic unit of work. Either everything commits or nothing does. This is the foundation of data integrity in relational databases.
 
 ```
 \i sql/12_transactions.sql
 ```
 
-**BEGIN / COMMIT:**
+**`BEGIN` / `COMMIT`:**
+
 ```sql
 BEGIN;
 INSERT INTO clientes (nombre, email) VALUES ('TX Demo', 'txdemo@test.com');
@@ -420,145 +439,188 @@ INSERT INTO pedidos (cliente_id, total, estado)
 VALUES ((SELECT cliente_id FROM clientes WHERE email = 'txdemo@test.com'), 0, 'pendiente');
 COMMIT;
 ```
-> "Both rows land together. If the second INSERT had failed, the first would have been rolled back too."
 
-**ROLLBACK:**
+Both rows land together. If the second `INSERT` had failed, the first would have been rolled back automatically — no orphaned customer record with no orders.
+
+**`ROLLBACK`:**
+
 ```sql
 BEGIN;
 UPDATE productos SET precio = precio * 0.01 WHERE activo = true;
-SELECT ROUND(AVG(precio)::NUMERIC, 4) FROM productos;  -- prices look very low
+SELECT ROUND(AVG(precio)::NUMERIC, 4) FROM productos;  -- prices look very wrong
 ROLLBACK;
 SELECT ROUND(AVG(precio)::NUMERIC, 2) FROM productos;  -- back to normal
 ```
-> "Inside the transaction, we see the damage. ROLLBACK — gone. Never hit the disk permanently."
 
-**SAVEPOINT — partial rollback:**
+Inside the transaction you can see the damage. `ROLLBACK` undoes everything — it never hit the disk permanently.
+
+**`SAVEPOINT` — partial rollback:**
+
 ```sql
 BEGIN;
 INSERT INTO categorias (nombre) VALUES ('TestTX');
 SAVEPOINT sp1;
--- second insert fails (UNIQUE violation) -- caught in DO block
--- ROLLBACK TO SAVEPOINT sp1 -- undoes only the second insert
-COMMIT;  -- first insert is saved
+-- if a second operation fails here, ROLLBACK TO SAVEPOINT sp1
+-- undoes only the second operation, not the first
+COMMIT;  -- the first insert is saved
 ```
-> "SAVEPOINTs let you recover from partial failures without aborting the whole transaction. Used in bulk imports and batch processing."
 
-**Two-session demo (open a second terminal):**
+`SAVEPOINT`s let you recover from partial failures without aborting the whole transaction. Useful in bulk imports: process 1000 rows, savepoint every 100 — if row 150 fails, roll back to the last savepoint and continue from 101.
+
+**Isolation — open two terminals to see it:**
 
 | Terminal A | Terminal B |
 |-----------|-----------|
 | `BEGIN;` | |
 | `UPDATE productos SET precio = 9999 WHERE producto_id = 1;` | |
-| | `SELECT precio FROM productos WHERE producto_id = 1;` |
+| | `SELECT precio FROM productos WHERE producto_id = 1;` — sees the old price |
 | `COMMIT;` | |
-| | `SELECT precio FROM productos WHERE producto_id = 1;` |
+| | `SELECT precio FROM productos WHERE producto_id = 1;` — now sees 9999 |
 
-> "Terminal B sees the OLD price until A commits. This is READ COMMITTED — PostgreSQL's default isolation level. Each statement sees only data that was committed before it started."
-
-**Discussion questions:**
-1. > "What happens if your Python app crashes in the middle of a BEGIN block? — The connection closes, PostgreSQL automatically rolls back the open transaction."
-2. > "When would you use SAVEPOINT in a real app? — Batch inserts: process 1000 rows, savepoint every 100. If row 150 fails, roll back to the last savepoint and continue from 101."
+Terminal B sees the old price until A commits. This is `READ COMMITTED` — PostgreSQL's default isolation level. Each statement sees only data that was committed before it started. If your Python app crashes mid-transaction, the connection closes and PostgreSQL automatically rolls back the open transaction.
 
 ---
 
-## WRAP UP (~3 min)
-
-"Let's recap what we covered today:
+## Wrap Up — Module 1 & 2
 
 | Topic | The point |
 |-------|-----------|
 | Normalization | One fact, one place. Eliminates update/delete/insert anomalies. |
 | Indexes | Speed up reads. Cost writes and storage. Choose carefully. |
-| DDL/DML | ALTER not recreate. RETURNING saves a round-trip. |
-| JOINs | INNER for matches, LEFT for gaps, aggregate with GROUP BY. |
+| DDL/DML | `ALTER` not recreate. `RETURNING` saves a round-trip. |
+| JOINs | `INNER` for matches, `LEFT` for gaps, aggregate with `GROUP BY`. |
 | Views | Encapsulate complex queries. Updatable only if 1-to-1 to a table. |
-| Functions | Reusable logic, validated inputs, two styles (sql vs plpgsql). |
+| Functions | Reusable logic, validated inputs, two styles (`sql` vs `plpgsql`). |
 | Procedures | Actions without return values. Enforce business rules. |
 | Triggers | Automatic enforcement. Audit, validate, react — invisibly. |
-| Transactions | Atomic, all-or-nothing. ROLLBACK is your safety net. |
+| Transactions | Atomic, all-or-nothing. `ROLLBACK` is your safety net. |
 
-The challenges in each exercise file are there for practice. Solutions are in `SOLUTIONS.md` and `SOLUTIONS_SQL_FUNDAMENTALS.md`.
-
-Any questions?"
+Challenges and exercises are in each SQL file. Solutions are in `SOLUTIONS.md` and `SOLUTIONS_SQL_FUNDAMENTALS.md`.
 
 ---
 
 ---
 
-## MODULE 3 — MongoDB & Hybrid Systems
+## Module 3 — MongoDB & Hybrid Systems
 
-> **Prerequisites:** MongoDB running, `mongosh` available. Postgres DB from Module 2 still loaded.
+**Prerequisites:**
+```
+make reset-normalized   # clean Postgres with the real productos table
+make mongo-start        # start the MongoDB container
+make mongo-seed         # populate MongoDB from the Postgres catalog
+make mongosh            # open the MongoDB shell
+```
+
+Verify the seed worked before starting:
+```js
+db.productos.countDocuments()                    // should match Postgres productos count
+db.productos.findOne({ categoria: "Laptops" })   // inspect a document
+```
 
 ---
 
-### Exercise 13 — SQL Hits a Wall (~8 min)
+### Exercise 13 — SQL Hits a Wall
 
-**Goal:** Show why the relational model is the wrong tool for variable-shape data, using the `productos` table participants already know.
-
-**Key framing:** This is a planning meeting. The PM has just dropped the ticket:
+The PM has just dropped this ticket:
 
 > "Hey, can we show laptop RAM, CPU, and screen size on the product page? Also monitor resolution and panel type, and mouse DPI and whether it's wireless. Should be easy right? 😊"
 
-The team is in the room. Three proposals come up. The architect shoots each one down. You are the architect.
-
-**Run the SQL to have something concrete on screen, but narrate over it — don't walk through every line.**
+Before writing a line of code, the team gets into a room. Three proposals come up. Here's why each one gets rejected.
 
 ```
 \i sql/13_sql_hits_a_wall.sql
 ```
 
-> After the demo, run `make reset-normalized` to restore the clean normalized schema before the MongoDB section. (`make reset` goes back to the bad schema from Module 1 — wrong state.)
+> After this exercise, run `make reset-normalized` to restore the clean normalized schema before continuing. (`make reset` goes back to Module 1's bad schema — that's the wrong state.)
 
 ---
 
-#### Proposal 1 — "Just add columns" (the realistic outcome)
+#### Proposal 1 — "Just add columns"
 
-**Diagram:** `diagrams/attempt1_nullable_columns.png`
+*"It's three `ALTER TABLE`s, done by end of sprint."*
 
-*Developer:* "It's three `ALTER TABLE`s, done by end of sprint."
+Run the first section of the SQL and look at what a laptop row looks like after Sprints 3, 7, and 11:
 
-*Architect shoots it down:*
-- You now have columns that are NULL for 7 out of 8 categories. Forever. Every laptop row carries `resolution`, `panel_type`, `refresh_hz` — all NULL. Every monitor row carries `ram_gb`, `cpu`, `storage_gb` — all NULL.
-- Nothing enforces which columns belong to which category. A laptop can have `dpi`. A monitor can have `battery_hours`. The DB won't stop it.
-- Next sprint adds keyboard specs: three more columns, 7/8 of rows get NULL again. This compounds indefinitely.
-- **This is the one that actually ships** — it's the path of least resistance. That's exactly why it's dangerous. Teams don't do this once; they do it eight times and end up with the diagram on screen.
+```sql
+SELECT
+    producto_id, nombre, precio,
+    ram_gb, cpu, storage_gb,     -- laptop columns
+    resolution, panel_type,      -- monitor columns (NULL for laptops)
+    dpi, wireless                -- mouse columns (NULL for laptops)
+FROM productos
+WHERE categoria_id = 1
+LIMIT 3;
+```
 
-**Ask the room:** "How many of you have seen a table that looked like this in production?" (pause)
+Every laptop row now carries `resolution`, `panel_type`, `refresh_hz` — permanently NULL. Every monitor row carries `ram_gb`, `cpu`, `storage_gb` — permanently NULL. Nothing in the schema prevents a laptop from having a `dpi` value or a monitor from having a `battery_hours`. The database won't stop it.
 
----
+The next sprint adds keyboard specs: three more columns, seven out of eight categories get NULL again. This compounds every sprint indefinitely.
 
-#### Proposal 2 — EAV (the clever trap)
-
-**Diagram:** `diagrams/attempt2_eav.png`
-
-*Developer:* "One generic `producto_atributos` table — key/value pairs. No more nullable columns, fully extensible."
-
-*Architect shoots it down:*
-- Every value is `TEXT`. `"8"` for VRAM, `"200"` for TDP. No types, no constraints — nothing stops `"ocho"` being stored as VRAM.
-- Fetching two attributes requires two self-JOINs. Fetching five requires five. Filtering by VRAM means `valor::INT >= 8` — a cast on every row, planner statistics useless.
-- Looks clean in the schema diagram. Becomes unreadable in every query that touches it.
-- **Gets killed in code review** once someone sees what the queries look like. Almost never reaches production on a team with an architect in the room.
+**Why this is the one that actually ships:** it's the path of least resistance. Teams don't do this once — they do it eight times and wake up with a table that has 40 columns, most of which are NULL for any given row.
 
 ---
 
-#### Proposal 3 — One table per category (the principled dead end)
+#### Proposal 2 — EAV (Entity–Attribute–Value)
 
-**Diagram:** `diagrams/attempt3_category_tables.png`
+*"One generic `producto_atributos` table — key/value pairs. No more nullable columns, fully extensible."*
 
-*Developer:* "Typed columns, proper foreign keys, real constraints — `specs_laptops`, `specs_monitores`, one per category. This is the correct relational approach."
+Look at the EAV query in the SQL file:
 
-*Architect shoots it down:*
-- It is the most correct relational solution. It is also the most expensive to maintain.
-- Every new category is a new table, a new migration, a new `LEFT JOIN` in every cross-category query.
-- Cross-category queries (`products under $500 across all categories`) require a `LEFT JOIN` per spec table. Result rows are still mostly NULL — same problem as Proposal 1, now split across eight tables.
-- You currently have 8 categories. The PM will add a ninth. Then a tenth. The query that fetches everything gets a new join every sprint.
-- **Gets stuck in planning** — the migration story alone kills it. "We need to backfill 100k rows across 8 tables" is a hard sell for a PM who wanted this done by end of sprint.
+```sql
+SELECT p.nombre, p.precio,
+       vram.valor  AS vram_gb,
+       tdp.valor   AS tdp_watts
+FROM   productos p
+JOIN   producto_atributos vram ON vram.producto_id = p.producto_id AND vram.atributo = 'vram_gb'
+JOIN   producto_atributos tdp  ON tdp.producto_id  = p.producto_id AND tdp.atributo  = 'tdp_watts'
+WHERE  p.categoria_id = 8
+  AND  vram.valor::INT >= 8;
+```
+
+Two attributes. Two self-joins. Every value is `TEXT` — `"8"` for VRAM, `"200"` for TDP. The filter `vram.valor::INT >= 8` casts TEXT to INT on every single row. The query planner's statistics on `valor` are useless because the column holds integers, booleans, and strings all mixed together.
+
+Fetching five attributes requires five self-joins. There's nothing stopping someone from inserting `"ocho"` as the value for `vram_gb` — the schema won't catch it.
+
+**Why this gets killed in code review:** the moment someone sees what the queries look like, it's over. The schema diagram looks clean; the queries that use it don't.
 
 ---
 
-**Closing point:**
+#### Proposal 3 — One table per category
 
-Three proposals. The architect has a reason to reject all of them — not because the developers are wrong, but because **SQL requires every row in a table to have the same shape, and product specs don't.** That constraint is load-bearing in the relational model. You can't design around it with the same tool.
+*"Typed columns, proper foreign keys, real constraints — `specs_laptops`, `specs_monitores`, one per category. This is the correct relational approach."*
+
+It is the most correct relational solution. It is also the most expensive to maintain.
+
+Look at the cross-category query:
+
+```sql
+SELECT p.nombre, p.precio,
+       p.ram_gb,
+       si.pages_per_min, si.color_print
+FROM   productos p
+LEFT JOIN specs_impresoras si ON si.producto_id = p.producto_id
+WHERE  p.precio < 300
+ORDER  BY p.precio
+LIMIT  10;
+```
+
+One `LEFT JOIN` per spec table. Every result row is still mostly NULL — the same problem as Proposal 1, now split across multiple tables. You currently have 8 categories. The PM will add a ninth. Then a tenth. Every cross-category query gets a new join every sprint.
+
+The migration story also kills it before it lands: "We need to backfill 100k rows across 8 new tables" is a hard conversation with a PM who wanted this done by end of sprint.
+
+---
+
+#### Why all three fail
+
+Three proposals, three developers, all rejected — not because the developers are wrong, but because **SQL requires every row in a table to have the same shape, and product specs don't.** That constraint is load-bearing in the relational model. You can't design around it using the same tool.
+
+Look at the current state of the `productos` table after running the script:
+
+```sql
+\d productos
+```
+
+Three different approaches coexist in the same schema simultaneously. This is what six months of feature pressure looks like in a relational database.
 
 ```
   ➜  Enter MongoDB.
@@ -566,148 +628,247 @@ Three proposals. The architect has a reason to reject all of them — not becaus
 
 ---
 
-### Refresher — The Document Model (~5 min)
+### The Document Model — Concepts
 
-**Diagram:** `diagrams/sql_vs_mongo.png`
+Before opening mongosh, look at this diagram: `diagrams/sql_vs_mongo.png`
 
-Show this before touching mongosh. The left side is the schema participants just ran. The right side is the same product in MongoDB. Let the diagram do the work.
-
-Concept mapping to anchor:
+The left side is the schema you just ran. The right side is the same product data in MongoDB.
 
 | SQL | MongoDB |
 |-----|---------|
 | Database | Database |
 | Table | Collection |
 | Row | Document |
-| Column | Field (exists only where relevant) |
+| Column | Field (present only where relevant) |
 | `NULL` | Field simply absent |
 | `ALTER TABLE` | `$set` on any document |
 | `JOIN` | Embedded subdoc or app-layer `$in` lookup |
 
-Three things to emphasize:
-- **No fixed schema.** The laptop document and the monitor document live in the same collection with different shapes. That's not a bug — it's the design.
-- **Fields are absent, not NULL.** The laptop document has no `resolution` field. It doesn't exist. There's no ghost column sitting there holding a NULL.
-- **`_id` = `producto_id`.** That's the seam between the two systems. Every MongoDB document in this workshop has an `_id` that matches a row in Postgres.
+Three things to anchor on:
+
+- **No fixed schema.** A laptop document and a monitor document live in the same collection with completely different shapes. That's not a bug — it's the design.
+- **Fields are absent, not NULL.** A laptop document has no `resolution` field. It doesn't exist. There's no ghost column sitting there holding a NULL value.
+- **`_id` = `producto_id`.** Every MongoDB document in this workshop has an `_id` that matches a row in Postgres. That shared key is what makes the hybrid system in Exercise 18 work.
 
 ---
 
-### Setup — MongoDB environment
+### Exercise 14 — The Document Model
 
-```
-make reset-normalized   # clean Postgres with real productos table
-make mongo-start        # start MongoDB container
-make mongo-seed         # read Postgres catalog → insert into MongoDB
-make mongosh            # open the shell
-```
+Look at the diagram first: `diagrams/hybrid_architecture.png`
 
-Verify the seed worked:
+Postgres owns the left side (orders, customers, transactions). MongoDB owns the right side (product catalog, specs). `producto_id` / `_id` is the shared key between them.
+
 ```js
-db.productos.countDocuments()          // should match Postgres productos count
-db.productos.findOne({ categoria: "Laptops" })
-```
-
----
-
-### Exercise 14 — The Document Model (~8 min)
-
-**Diagram:** `diagrams/hybrid_architecture.png`
-
-Show the diagram before running anything. Establish the two-system picture: Postgres owns the left side, MongoDB owns the right, `producto_id` / `_id` is the shared key.
-
-```
 // in mongosh
 load('mongo/01_document_model.js')
 ```
 
-Key points:
-- Drop the demo collection first, then insert 4 products — one per category. Each document has a `specs` subdocument with a different shape.
-- Point at a laptop doc and a monitor doc side by side. No NULLs. No columns that don't belong. Each document carries exactly what it needs.
-- `_id` equals `producto_id` from Postgres. That's the contract between the two systems.
-- Adding keyboard specs next sprint = insert documents with a `specs.switch_type` field. No `ALTER TABLE`. No migration. Existing documents are unaffected.
+The script inserts four products — one per category — into a demo collection. Each document has a `specs` subdocument with a completely different shape:
 
-**Discussion question:** If a product has no specs yet, what does its document look like? (Just omit the `specs` field — the document is still valid.)
+- Laptop: `ram_gb`, `cpu`, `storage_gb`, `screen_inch`, `os`, `battery_hours`
+- Monitor: `resolution`, `panel_type`, `refresh_hz`, `ports` (an array)
+- Mouse: `dpi`, `wireless`, `sensor_type`, `buttons`
+- GPU: `vram_gb`, `tdp_watts`, `connector`, `outputs` (an array)
+
+No NULLs. No columns that don't belong. Each document carries exactly what it needs and nothing else.
+
+Adding keyboard specs next sprint means inserting keyboard documents with a `specs.switch_type` field. No `ALTER TABLE`. No migration. The existing laptop, monitor, mouse, and GPU documents are completely unaffected.
+
+**Think about:** if a product has no specs yet — a new category just added — what does its document look like? You can just omit the `specs` field entirely. The document is still valid.
 
 ---
 
-### Exercise 15 — CRUD (~8 min)
+### Exercise 15 — CRUD
 
-```
+```js
 load('mongo/02_crud.js')
 ```
 
-Key points:
-- `insertOne` — point out the document has a `specs` subdocument with fields no other category uses. No schema to conform to.
-- `find` with projection — second argument controls which fields come back. `1` = include, `0` = exclude. `_id: 0` suppresses the id.
-- `updateOne` with `$set` and `$inc` — `$set` adds or updates a field without touching anything else. Compare to SQL: `UPDATE productos SET precio = 139.99` would require knowing all other columns. `$inc` modifies a numeric field atomically.
-- `deleteOne` — removes one matching document.
+**`insertOne`** — the keyboard document has fields no other category uses. The collection has no schema to enforce.
 
-**Discussion question:** `$set` can add a field to one document that no other document has. Is that a feature or a risk?
+**`find` with projection** — the second argument controls which fields come back:
+
+```js
+db.productos_demo.find(
+  { categoria: "Laptops" },
+  { nombre: 1, precio: 1, "specs.ram_gb": 1, _id: 0 }
+)
+```
+
+`1` = include, `0` = exclude. `_id: 0` suppresses the id. Dot notation (`"specs.ram_gb"`) reaches into the nested subdocument.
+
+**`updateOne` with `$set` and `$inc`:**
+
+```js
+db.productos_demo.updateOne(
+  { _id: 5 },
+  {
+    $set:  { precio: 139.99, "specs.backlit": true },
+    $inc:  { stock: -5 }
+  }
+)
+```
+
+`$set` adds or updates a field without touching anything else on the document. `$inc` modifies a numeric field atomically. You're adding a `specs.backlit` field that no other document in the collection has — and that's fine.
+
+**`deleteOne`** — removes one matching document.
+
+**Think about:** `$set` can add a field to one document that no other document has. Is that a feature or a risk? (The honest answer: both, depending on whether your application code is disciplined about the shape it expects.)
 
 ---
 
-### Exercise 16 — Querying (~10 min)
+### Exercise 16 — Querying
 
-```
+```js
 load('mongo/03_querying.js')
 ```
 
-Key points:
-- **Dot notation** — `"specs.ram_gb": { $gte: 16 }` reaches into the nested subdocument. No JOIN. Point back to the EAV query that needed 3 self-joins and a TEXT cast to do the same thing.
-- **Array field** — `"specs.ports": "USB-C"` matches any document where the `ports` array contains `"USB-C"`. MongoDB treats array membership as equality.
-- **`$exists`** — finds documents that have a field, regardless of value. Useful for cross-category queries where not all documents have the same fields.
-- **`$in`** — equivalent of SQL `IN (...)`. Works on any field including `_id` — which is how the hybrid lookup in Exercise 18 works.
+**Dot notation into nested specs:**
 
-Pause here and show the timing difference vs. the EAV query from Exercise 13. Run the EAV query in pgcli (`\timing on`) then run the equivalent MongoDB query in mongosh. The gap makes the point.
+```js
+db.productos.find(
+  { categoria: "Laptops", "specs.ram_gb": { $gte: 32 }, activo: true },
+  { nombre: 1, precio: 1, "specs.ram_gb": 1, "specs.cpu": 1, _id: 0 }
+)
+```
+
+Compare this to the EAV query from Exercise 13: the same filter (`ram >= 32`) needed two self-joins and a TEXT cast. Here it's one field in the query filter.
+
+**Array field — membership as equality:**
+
+```js
+db.productos.find(
+  { "specs.ports": "USB-C" },
+  { nombre: 1, "specs.ports": 1, _id: 0 }
+)
+```
+
+MongoDB checks whether `"USB-C"` is in the `ports` array. You don't need to `UNNEST` or `ANY()` — array membership is just equality.
+
+**`$exists` — query across different document shapes:**
+
+```js
+db.productos.find(
+  { "specs.wireless": true, activo: true },
+  { nombre: 1, categoria: 1, precio: 1, _id: 0 }
+)
+```
+
+This returns mice, keyboards, and headphones — any document that has a `specs.wireless` field set to `true`, regardless of category. Cross-category queries that were painful with nullable columns or category spec tables are just filters here.
+
+**`$in`** works on any field including `_id` — which is exactly how the hybrid lookup in Exercise 18 works.
+
+If you want to see the timing difference: turn on `\timing on` in pgcli and run the equivalent EAV query from Exercise 13. Then run the MongoDB query here. The gap makes the architectural point concrete.
 
 ---
 
-### Exercise 17 — Aggregation Pipeline (~10 min)
+### Exercise 17 — Aggregation Pipeline
 
-```
+```js
 load('mongo/04_aggregation.js')
 ```
 
-Build the pipeline one stage at a time — run it after each addition so participants see the transformation:
+The aggregation pipeline is MongoDB's equivalent of `GROUP BY`, `HAVING`, and computed columns. Each stage transforms the stream of documents coming out of the previous stage.
 
 | Stage | SQL equivalent |
 |-------|---------------|
 | `$match` | `WHERE` |
 | `$group` | `GROUP BY` + aggregate functions |
 | `$sort` | `ORDER BY` |
-| `$project` | `SELECT` — reshape, rename, compute fields |
-| `$unwind` | Explode an array field into one doc per element |
+| `$project` | `SELECT` — reshape, rename, compute new fields |
+| `$unwind` | Explode an array into one document per element |
 
-Key points:
-- Each stage receives the output of the previous stage — it's a pipeline, not a query.
-- `$project` can compute new fields: `{ $multiply: ["$precio", 0.9] }` — no subquery needed.
-- `$unwind` on `specs.ports` turns one monitor document with 3 ports into 3 documents, one per port. Useful for counting or filtering on array contents.
+**Build it up one stage at a time:**
 
-**Discussion question:** What's the equivalent of a SQL `HAVING` clause in MongoDB? (`$match` after a `$group` stage.)
+```js
+// Stage 1 only
+db.productos.aggregate([
+  { $match: { activo: true } }
+])
+
+// Add $group
+db.productos.aggregate([
+  { $match: { activo: true } },
+  { $group: { _id: "$categoria", total: { $sum: 1 }, avg_price: { $avg: "$precio" } } }
+])
+
+// Add $sort
+db.productos.aggregate([
+  { $match: { activo: true } },
+  { $group: { _id: "$categoria", total: { $sum: 1 }, avg_price: { $avg: "$precio" } } },
+  { $sort: { avg_price: -1 } }
+])
+```
+
+**`$project` computes new fields inline:**
+
+```js
+{ $project: {
+    nombre: 1,
+    precio_con_10pct: { $round: [{ $multiply: ["$precio", 0.9] }, 2] }
+} }
+```
+
+No subquery, no CTE — just an expression in the projection stage.
+
+**`$unwind` — explode an array:**
+
+```js
+db.productos.aggregate([
+  { $match:   { categoria: "Monitores", "specs.ports": { $exists: true } } },
+  { $unwind:  "$specs.ports" },
+  { $group:   { _id: "$specs.ports", count: { $sum: 1 } } },
+  { $sort:    { count: -1 } }
+])
+```
+
+One monitor document with three ports becomes three documents — one per port. Then `$group` counts them. This is how you aggregate over array contents.
+
+**`$match` after `$group` = `HAVING`:**
+
+```js
+db.productos.aggregate([
+  { $group:  { _id: "$categoria", total: { $sum: 1 } } },
+  { $match:  { total: { $gte: 12500 } } }
+])
+```
+
+A `$match` stage after a `$group` stage filters on the aggregated result — exactly what `HAVING` does in SQL.
 
 ---
 
-### Exercise 18 — The Hybrid System (~10 min)
+### Exercise 18 — The Hybrid System
 
-**Diagram:** `diagrams/hybrid_architecture.png` — back to this one.
+Back to the diagram: `diagrams/hybrid_architecture.png`
 
-```
+```js
 load('mongo/05_hybrid.js')
 ```
 
-Walk through the 3-step flow shown in the diagram:
+The script shows the `$in` pattern — how the application layer fetches multiple documents by a list of IDs:
 
-1. **SQL** — fetch `items_pedido` for an order. Get `producto_ids`.
-2. **MongoDB** — `find({ _id: { $in: producto_ids } })`. One query, any number of products.
-3. **Merge** — application layer joins the two result sets by `producto_id` / `_id`.
+```js
+db.productos.find(
+  { _id: { $in: [101, 204, 389] } },
+  { nombre: 1, categoria: 1, precio: 1, specs: 1 }
+)
+```
 
-Key points:
-- Neither system knows about the other. Postgres has no idea MongoDB exists. MongoDB has no idea about `pedidos`.
-- The application layer owns the join. That's intentional — it keeps each system focused on what it does best.
-- Postgres guaranteed the transaction: stock was decremented atomically, the order total is correct, the customer record is normalized.
-- MongoDB provided the catalog: each product had its own spec shape, no NULLs, no migrations.
-- The only contract: `producto_id` is the same value in both systems. That's the seam.
+This is the same query that `make hybrid` runs in the full demo. Exit mongosh and run it:
 
-**Closing point for the module:**
+```
+make hybrid
+```
+
+What happens:
+
+1. **Postgres** — fetch a real order and its line items (`pedido_id`, `cliente`, `items_pedido`)
+2. **Extract** — pull the `producto_ids` out of the items
+3. **MongoDB** — `find({ _id: { $in: producto_ids } })` — one query, all products
+4. **Merge** — enrich each item with its catalog specs
+5. **Print** — a full receipt with product specs per line item
+
+Neither system knows the other exists. Postgres has no idea MongoDB is running. MongoDB has no idea what a `pedido` is. The application layer owns the join — that's intentional. Each system does exactly what it's good at.
 
 | Postgres | MongoDB |
 |----------|---------|
@@ -717,50 +878,62 @@ Key points:
 | Strong consistency | Fast catalog reads |
 | `producto_id` FK | `_id` = same value |
 
-Neither system is "better." They solve different problems. The skill is knowing which problem you have.
+Neither system is better. They solve different problems. The skill is knowing which problem you have.
 
 ---
 
-### Exercise 19 — Closing the Loop (~5 min)
+### Exercise 19 — Closing the Loop
 
-```
+```js
 load('mongo/06_closing_the_loop.js')
 ```
 
-Callback to the PM ticket from the top of the module:
+Back to the PM's ticket:
 
 > "Hey, can we show laptop RAM, CPU, and screen size on the product page? Also monitor resolution and panel type, and mouse DPI and whether it's wireless. Should be easy right? 😊"
 
-Key points:
-- Three `find()` calls — one per category. No JOINs, no migrations, no NULLs.
-- The script also shows the **next sprint** (keyboard specs): `$updateMany` adds `specs.backlit` to every keyboard document. Laptop, monitor, and mouse documents are completely unaffected.
-- Score at the end: schema migrations required = 0, `ALTER TABLE` statements = 0, NULL columns added = 0.
+Three `find()` calls. One per category. No JOINs. No migrations. No NULLs.
 
-**Final message to leave participants with:**
+The script also handles the next sprint — keyboards need `backlit` added:
 
-> The PM's ticket took three queries.  
-> The next sprint took one `$updateMany`.  
-> The problem was never the developers — it was using the wrong tool for the shape of the data.
+```js
+db.productos.updateMany(
+  { categoria: "Periféricos", "specs.switch_type": { $exists: true } },
+  { $set: { "specs.backlit": true } }
+)
+```
 
----
+One `$updateMany`. Every keyboard document gets the field. Every laptop, monitor, and mouse document: completely unaffected.
 
-> **Useful mongosh reminders to share with students:**
-> - `show dbs` — list databases
-> - `use workshop` — switch database
-> - `show collections` — list collections
-> - `db.collection.find().pretty()` — formatted output
-> - `db.collection.countDocuments()` — count
-> - `db.collection.findOne()` — first document
-> - `load('file.js')` — run a script file
-> - `exit` — quit
+Final score: schema migrations required = 0, `ALTER TABLE` statements = 0, NULL columns added = 0.
+
+The problem was never the developers. It was using the wrong tool for the shape of the data.
 
 ---
 
-> **Useful pgcli reminders to share with students:**
-> - `\dt` — list tables
-> - `\d tablename` — describe a table
-> - `\di` — list indexes
-> - `\timing on/off` — show query time
-> - `\i file.sql` — run a SQL file
-> - `F3` — toggle multi-line mode
-> - `\q` — quit
+## Quick Reference
+
+**pgcli:**
+
+| Command | What it does |
+|---------|-------------|
+| `\dt` | List tables |
+| `\d tablename` | Describe a table |
+| `\di` | List indexes |
+| `\timing on/off` | Show query execution time |
+| `\i file.sql` | Run a SQL file |
+| `F3` | Toggle multi-line mode |
+| `\q` | Quit |
+
+**mongosh:**
+
+| Command | What it does |
+|---------|-------------|
+| `show dbs` | List databases |
+| `use workshop` | Switch to the workshop database |
+| `show collections` | List collections |
+| `db.collection.find().pretty()` | Formatted output |
+| `db.collection.countDocuments()` | Count documents |
+| `db.collection.findOne()` | First document |
+| `load('file.js')` | Run a script file |
+| `exit` | Quit |
