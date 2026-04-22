@@ -491,13 +491,17 @@ Any questions?"
 
 ---
 
-### Exercise 13 — SQL Hits a Wall (~12 min)
+### Exercise 13 — SQL Hits a Wall (~8 min)
 
 **Goal:** Show why the relational model is the wrong tool for variable-shape data, using the `productos` table participants already know.
 
-**Key framing:** These are not experiments that get rolled back. Each attempt is a real sprint ticket, made by a real developer, that stuck. The SQL file simulates 6 months of production schema evolution. Nobody rolled anything back — nobody ever does.
+**Key framing:** This is a planning meeting. The PM has just dropped the ticket:
 
-**Setup:** Show each diagram before running the corresponding section of the SQL. The diagram is the thesis; the SQL is the proof.
+> "Hey, can we show laptop RAM, CPU, and screen size on the product page? Also monitor resolution and panel type, and mouse DPI and whether it's wireless. Should be easy right? 😊"
+
+The team is in the room. Three proposals come up. The architect shoots each one down. You are the architect.
+
+**Run the SQL to have something concrete on screen, but narrate over it — don't walk through every line.**
 
 ```
 \i sql/13_sql_hits_a_wall.sql
@@ -507,47 +511,54 @@ Any questions?"
 
 ---
 
-#### Attempt 1 — Nullable column explosion (Sprints 3, 7, 11)
+#### Proposal 1 — "Just add columns" (the realistic outcome)
 
 **Diagram:** `diagrams/attempt1_nullable_columns.png`
 
-Key points:
-- Three separate sprint tickets, three separate developers, one growing table. Each addition seemed reasonable in isolation.
-- For any given product row, most columns are NULL — the diagram shows this side by side for a laptop vs. a monitor row.
-- No enforcement possible: nothing stops a laptop row from having `resolution`, or a monitor from having `ram_gb`.
-- **Normalization callback:** 1NF violation. In Module 1 they saw repeated data across rows; this is the other flavor — columns with no consistent meaning across rows. A column irrelevant to 7 of 8 categories isn't a column for that table. Same root cause, different symptom.
+*Developer:* "It's three `ALTER TABLE`s, done by end of sprint."
 
-**Discussion question:** What happens when the next sprint adds keyboard specs?
+*Architect shoots it down:*
+- You now have columns that are NULL for 7 out of 8 categories. Forever. Every laptop row carries `resolution`, `panel_type`, `refresh_hz` — all NULL. Every monitor row carries `ram_gb`, `cpu`, `storage_gb` — all NULL.
+- Nothing enforces which columns belong to which category. A laptop can have `dpi`. A monitor can have `battery_hours`. The DB won't stop it.
+- Next sprint adds keyboard specs: three more columns, 7/8 of rows get NULL again. This compounds indefinitely.
+- **This is the one that actually ships** — it's the path of least resistance. That's exactly why it's dangerous. Teams don't do this once; they do it eight times and end up with the diagram on screen.
+
+**Ask the room:** "How many of you have seen a table that looked like this in production?" (pause)
 
 ---
 
-#### Attempt 2 — EAV (Entity–Attribute–Value) (Sprint 14)
+#### Proposal 2 — EAV (the clever trap)
 
 **Diagram:** `diagrams/attempt2_eav.png`
 
-Key points:
-- A different developer hit the same wall and tried a different escape. The table structure looks clean — the query cost is the problem.
-- Every attribute is TEXT — `"8"` for VRAM, `"200"` for TDP. No types, no constraints, no validation at the DB level.
-- One JOIN per attribute you want to retrieve. The diagram shows 2 GPU attributes requiring 2 self-joins on a 500k-row table.
-- Filtering by VRAM requires `valor::INT >= 8` — a TEXT cast on every row. The planner's statistics on `valor` are useless because integers, booleans, and strings are mixed in one column.
-- **Performance:** ~500k rows (100k products × ~5 attrs). 2-attr query = 2 self-joins + TEXT cast. Estimated 8–15x slower than flat columns for filtered queries.
+*Developer:* "One generic `producto_atributos` table — key/value pairs. No more nullable columns, fully extensible."
 
-**Discussion question:** What happens if someone inserts `"ocho"` as the value for `vram_gb`?
+*Architect shoots it down:*
+- Every value is `TEXT`. `"8"` for VRAM, `"200"` for TDP. No types, no constraints — nothing stops `"ocho"` being stored as VRAM.
+- Fetching two attributes requires two self-JOINs. Fetching five requires five. Filtering by VRAM means `valor::INT >= 8` — a cast on every row, planner statistics useless.
+- Looks clean in the schema diagram. Becomes unreadable in every query that touches it.
+- **Gets killed in code review** once someone sees what the queries look like. Almost never reaches production on a team with an architect in the room.
 
 ---
 
-#### Attempt 3 — One table per category (Sprint 18)
+#### Proposal 3 — One table per category (the principled dead end)
 
 **Diagram:** `diagrams/attempt3_category_tables.png`
 
-Key points:
-- A third developer, a third approach. Typed columns, real constraints — the most "correct" relational solution.
-- The schema now has THREE coexisting patterns in production: nullable columns, an EAV table, and a category spec table.
-- Cross-category queries require a LEFT JOIN per spec table. Every result row is still mostly NULL — same problem as Attempt 1, now split across tables.
-- The orange `specs_teclados` node is next sprint: another table, another migration, another LEFT JOIN in every cross-category query.
-- **Performance:** ~12.5k rows per spec table, PK indexes — fast individually. Cross-category: 3–6x slower at 8 categories, degrades further. Opposite failure mode to EAV: category tables are worse for cross-category reads; EAV is worse for filtered queries.
+*Developer:* "Typed columns, proper foreign keys, real constraints — `specs_laptops`, `specs_monitores`, one per category. This is the correct relational approach."
 
-**Closing point:** Three approaches, three developers, all in the same production schema simultaneously. The problem is not the developers — SQL requires every row in a table to have the same shape, and product specs don't.
+*Architect shoots it down:*
+- It is the most correct relational solution. It is also the most expensive to maintain.
+- Every new category is a new table, a new migration, a new `LEFT JOIN` in every cross-category query.
+- Cross-category queries (`products under $500 across all categories`) require a `LEFT JOIN` per spec table. Result rows are still mostly NULL — same problem as Proposal 1, now split across eight tables.
+- You currently have 8 categories. The PM will add a ninth. Then a tenth. The query that fetches everything gets a new join every sprint.
+- **Gets stuck in planning** — the migration story alone kills it. "We need to backfill 100k rows across 8 tables" is a hard sell for a PM who wanted this done by end of sprint.
+
+---
+
+**Closing point:**
+
+Three proposals. The architect has a reason to reject all of them — not because the developers are wrong, but because **SQL requires every row in a table to have the same shape, and product specs don't.** That constraint is load-bearing in the relational model. You can't design around it with the same tool.
 
 ```
   ➜  Enter MongoDB.
