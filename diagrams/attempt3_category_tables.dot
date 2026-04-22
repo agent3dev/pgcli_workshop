@@ -1,0 +1,112 @@
+digraph "Attempt 3 — One Table Per Category" {
+    rankdir=LR;
+    node [shape=plaintext, fontsize=10];
+    fontname="Helvetica";
+
+    label=<<b>Attempt 3: One spec table per category</b><br/>Correct types and constraints — but schema explosion + same NULL sprawl in queries.<br/><font color="#CC0000">⚠ ~12.5k rows per spec table (100k / 8 categories). Single-category query: ~1.2x slower. Cross-category (8 LEFT JOINs): 3–6x slower. Degrades further with each new category.</font>>;
+    labelloc=t;
+    fontsize=13;
+
+    productos [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#5B9BD5" align="center"><font color="white"><b>productos</b></font></td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left"><b>producto_id   SERIAL PK</b></td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">nombre        VARCHAR(200)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">precio        DECIMAL(10,2)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">stock         INT</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">categoria_id  INT FK</td></tr>
+        </table>
+    >];
+
+    specs_laptops [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#375623" align="center"><font color="white"><b>specs_laptops</b></font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">ram_gb       INT NOT NULL</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">cpu          VARCHAR(100)</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">storage_gb   INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">screen_inch  DECIMAL(4,1)</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">battery_hours INT</td></tr>
+        </table>
+    >];
+
+    specs_monitores [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#375623" align="center"><font color="white"><b>specs_monitores</b></font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">resolution   VARCHAR(20)</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">panel_type   VARCHAR(30)</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">refresh_hz   INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">ports        TEXT</td></tr>
+        </table>
+    >];
+
+    specs_ratones [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#375623" align="center"><font color="white"><b>specs_ratones</b></font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">dpi          INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">wireless     BOOLEAN</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">sensor_type  VARCHAR(50)</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">buttons      INT</td></tr>
+        </table>
+    >];
+
+    specs_gpus [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#375623" align="center"><font color="white"><b>specs_gpus</b></font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">vram_gb      INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">tdp_watts    INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">connector    VARCHAR(30)</td></tr>
+        </table>
+    >];
+
+    specs_impresoras [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#375623" align="center"><font color="white"><b>specs_impresoras</b></font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">pages_per_min INT</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">color_print  BOOLEAN</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">cartridge_type VARCHAR(50)</td></tr>
+        </table>
+    >];
+
+    specs_teclados [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#843C0C" align="center"><font color="white"><b>specs_teclados  ← new category</b></font></td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left"><b>producto_id    INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left">switch_type    VARCHAR(50)</td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left">actuation_g    INT</td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left">rgb            BOOLEAN</td></tr>
+        </table>
+    >];
+
+    query_cost [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#FF0000" align="center"><font color="white"><b>Query: all products under $500</b></font></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">SELECT p.nombre, p.precio,</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">       sl.ram_gb, sl.screen_inch,</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">       sm.resolution, sm.panel_type,</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">       sr.dpi, sr.wireless</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">FROM   productos p</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">LEFT JOIN specs_laptops   sl ON sl.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">LEFT JOIN specs_monitores sm ON sm.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">LEFT JOIN specs_ratones   sr ON sr.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">LEFT JOIN specs_gpus      sg ON sg.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">LEFT JOIN specs_impresoras si ON si.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">WHERE p.precio &lt; 500;</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left"> </td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">→ Every row is still mostly NULL.</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">→ Add a category = add a LEFT JOIN.</td></tr>
+        </table>
+    >];
+
+    productos -> specs_laptops    [label="LEFT JOIN"];
+    productos -> specs_monitores  [label="LEFT JOIN"];
+    productos -> specs_ratones    [label="LEFT JOIN"];
+    productos -> specs_gpus       [label="LEFT JOIN"];
+    productos -> specs_impresoras [label="LEFT JOIN"];
+    productos -> specs_teclados   [label="LEFT JOIN\n(next sprint)" color="#CC0000" fontcolor="#CC0000"];
+    productos -> query_cost       [style=dashed color="#CC0000" label="result"];
+}

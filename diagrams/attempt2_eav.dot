@@ -1,0 +1,70 @@
+digraph "Attempt 2 — EAV (Entity-Attribute-Value)" {
+    rankdir=LR;
+    node [shape=plaintext, fontsize=10];
+    fontname="Helvetica";
+
+    label=<<b>Attempt 2: EAV — Entity Attribute Value</b><br/>Flexible schema, but every query becomes a pivot.<br/><font color="#CC0000">⚠ ~500k rows (100k products × 5 attrs). 3-attr query = 3 self-joins + TEXT cast on every filter row. Est. 8–15x slower than flat columns.</font>>;
+    labelloc=t;
+    fontsize=13;
+
+    productos [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#5B9BD5" align="center"><font color="white"><b>productos</b></font></td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left"><b>producto_id   SERIAL PK</b></td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">nombre        VARCHAR(200)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">precio        DECIMAL(10,2)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">stock         INT</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">categoria_id  INT FK</td></tr>
+        </table>
+    >];
+
+    producto_atributos [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#E36C09" align="center"><font color="white"><b>producto_atributos</b></font></td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left"><b>producto_id  INT PK/FK</b></td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left"><b>atributo     TEXT PK</b></td></tr>
+            <tr><td bgcolor="#FCE4D6" align="left">valor        TEXT  ← everything is TEXT</td></tr>
+        </table>
+    >];
+
+    eav_data [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr>
+                <td bgcolor="#666666"><font color="white"><b>producto_id</b></font></td>
+                <td bgcolor="#666666"><font color="white"><b>atributo</b></font></td>
+                <td bgcolor="#666666"><font color="white"><b>valor</b></font></td>
+            </tr>
+            <tr><td bgcolor="#FFF2CC">42</td><td bgcolor="#FFF2CC">ram_gb</td><td bgcolor="#FFF2CC">"16"</td></tr>
+            <tr><td bgcolor="#FFF2CC">42</td><td bgcolor="#FFF2CC">cpu</td><td bgcolor="#FFF2CC">"Intel i7-1355U"</td></tr>
+            <tr><td bgcolor="#FFF2CC">42</td><td bgcolor="#FFF2CC">storage_gb</td><td bgcolor="#FFF2CC">"512"</td></tr>
+            <tr><td bgcolor="#FFF2CC">42</td><td bgcolor="#FFF2CC">battery_hours</td><td bgcolor="#FFF2CC">"10"</td></tr>
+            <tr><td bgcolor="#DAEEF3">77</td><td bgcolor="#DAEEF3">resolution</td><td bgcolor="#DAEEF3">"3840x2160"</td></tr>
+            <tr><td bgcolor="#DAEEF3">77</td><td bgcolor="#DAEEF3">panel_type</td><td bgcolor="#DAEEF3">"IPS"</td></tr>
+            <tr><td bgcolor="#DAEEF3">77</td><td bgcolor="#DAEEF3">refresh_hz</td><td bgcolor="#DAEEF3">"144"</td></tr>
+        </table>
+    >];
+
+    query_cost [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#FF0000" align="center"><font color="white"><b>Query: laptops with 16+ GB RAM, under $1000</b></font></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">SELECT p.nombre, p.precio,</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">       ram.valor, cpu.valor, stor.valor</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">FROM   productos p</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">JOIN   producto_atributos ram</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">         ON ram.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">        AND ram.atributo = 'ram_gb'</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">JOIN   producto_atributos cpu  ← 2nd JOIN</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">         ON cpu.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">        AND cpu.atributo = 'cpu'</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">JOIN   producto_atributos stor ← 3rd JOIN</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">         ON stor.producto_id = p.producto_id</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">        AND stor.atributo = 'storage_gb'</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">WHERE  p.precio &lt; 1000</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">  AND  ram.valor::INT &gt;= 16  ← cast TEXT every time</td></tr>
+        </table>
+    >];
+
+    productos -> producto_atributos [label="1 product\nN attributes"];
+    producto_atributos -> eav_data [label="sample\ndata" style=dashed color="#888888"];
+    producto_atributos -> query_cost [label="to query\n3 attrs..." style=dashed color="#CC0000"];
+}

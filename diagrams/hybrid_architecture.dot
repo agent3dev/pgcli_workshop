@@ -1,0 +1,118 @@
+digraph "Hybrid Architecture — Postgres + MongoDB" {
+    rankdir=LR;
+    node [shape=plaintext, fontsize=10];
+    fontname="Helvetica";
+    splines=ortho;
+
+    label=<<b>Hybrid Architecture: Postgres + MongoDB</b><br/>Each system owns what it does best. producto_id is the shared key.>;
+    labelloc=t;
+    fontsize=13;
+
+    subgraph cluster_postgres {
+        label=<<b>PostgreSQL</b><br/>Transactions · Normalization · ACID>;
+        bgcolor="#DAEEF3";
+        fontsize=11;
+        color="#5B9BD5";
+
+        clientes [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#5B9BD5"><font color="white"><b>clientes</b></font></td></tr>
+                <tr><td align="left">cliente_id PK</td></tr>
+                <tr><td align="left">nombre, email</td></tr>
+            </table>
+        >];
+
+        pedidos [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#5B9BD5"><font color="white"><b>pedidos</b></font></td></tr>
+                <tr><td align="left">pedido_id PK</td></tr>
+                <tr><td align="left">cliente_id FK</td></tr>
+                <tr><td align="left">total, estado</td></tr>
+            </table>
+        >];
+
+        items_pedido [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#5B9BD5"><font color="white"><b>items_pedido</b></font></td></tr>
+                <tr><td align="left">pedido_id FK</td></tr>
+                <tr><td bgcolor="#FFF2CC" align="left"><b>producto_id  ← bridge key</b></td></tr>
+                <tr><td align="left">cantidad, precio_unitario</td></tr>
+            </table>
+        >];
+
+        pg_owns [label=<
+            <table border="0" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#C6EFCE" align="left">✅ Transactions (BEGIN/COMMIT)</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">✅ Foreign key constraints</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">✅ Stock decrements (atomic)</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">✅ Financial records</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">✅ Customer identity</td></tr>
+            </table>
+        >];
+
+        clientes -> pedidos [label="1:N"];
+        pedidos -> items_pedido [label="1:N"];
+    }
+
+    subgraph cluster_mongo {
+        label=<<b>MongoDB</b><br/>Flexible schema · Document model · Catalog>;
+        bgcolor="#FFF2CC";
+        fontsize=11;
+        color="#E36C09";
+
+        productos_mongo [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#E36C09"><font color="white"><b>productos collection</b></font></td></tr>
+                <tr><td bgcolor="#FFF2CC" align="left"><b>_id = producto_id  ← bridge key</b></td></tr>
+                <tr><td align="left">nombre, precio, stock</td></tr>
+                <tr><td align="left">categoria</td></tr>
+                <tr><td align="left">specs: { ... }  ← shape varies per category</td></tr>
+            </table>
+        >];
+
+        laptop_doc [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#C6EFCE" align="center"><b>Laptop doc</b></td></tr>
+                <tr><td align="left">specs.ram_gb: 16</td></tr>
+                <tr><td align="left">specs.cpu: "i7-1355U"</td></tr>
+                <tr><td align="left">specs.storage_gb: 512</td></tr>
+            </table>
+        >];
+
+        monitor_doc [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#DAEEF3" align="center"><b>Monitor doc</b></td></tr>
+                <tr><td align="left">specs.resolution: "4K"</td></tr>
+                <tr><td align="left">specs.panel_type: "IPS"</td></tr>
+                <tr><td align="left">specs.ports: [...]</td></tr>
+            </table>
+        >];
+
+        mongo_owns [label=<
+            <table border="0" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#FCE4D6" align="left">✅ Variable spec shape per category</td></tr>
+                <tr><td bgcolor="#FCE4D6" align="left">✅ No schema migration for new attrs</td></tr>
+                <tr><td bgcolor="#FCE4D6" align="left">✅ Rich nested documents</td></tr>
+                <tr><td bgcolor="#FCE4D6" align="left">✅ Product search &amp; filtering</td></tr>
+                <tr><td bgcolor="#FCE4D6" align="left">✅ Array fields (ports, tags)</td></tr>
+            </table>
+        >];
+
+        productos_mongo -> laptop_doc  [style=dashed];
+        productos_mongo -> monitor_doc [style=dashed];
+    }
+
+    app [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#7030A0"><font color="white"><b>Application layer</b></font></td></tr>
+            <tr><td align="left">1. SQL: fetch order + items from Postgres</td></tr>
+            <tr><td align="left">2. Extract producto_ids from items</td></tr>
+            <tr><td align="left">3. MongoDB: find({ _id: { $in: ids } })</td></tr>
+            <tr><td align="left">4. Merge: enrich items with catalog specs</td></tr>
+            <tr><td align="left">5. Return enriched receipt to client</td></tr>
+        </table>
+    >];
+
+    items_pedido -> app    [label="producto_ids" color="#7030A0" fontcolor="#7030A0"];
+    app -> productos_mongo [label="$in lookup"   color="#7030A0" fontcolor="#7030A0" style=dashed];
+}

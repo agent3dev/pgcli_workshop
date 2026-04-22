@@ -1,0 +1,102 @@
+digraph "SQL vs MongoDB — Same Data, Different Model" {
+    rankdir=TB;
+    node [shape=plaintext, fontsize=10];
+    fontname="Helvetica";
+
+    label=<<b>Same product. Two models.</b>>;
+    labelloc=t;
+    fontsize=14;
+
+    subgraph cluster_sql {
+        label=<<b>Relational (SQL)</b>>;
+        bgcolor="#DAEEF3";
+        color="#5B9BD5";
+        fontsize=12;
+
+        sql_concepts [label=<
+            <table border="0" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#BDD7EE" align="center"><b>Concepts</b></td></tr>
+                <tr><td align="left">Database   → Database</td></tr>
+                <tr><td align="left">Table      → fixed schema, all rows same shape</td></tr>
+                <tr><td align="left">Row        → one record</td></tr>
+                <tr><td align="left">Column     → same field on every row</td></tr>
+                <tr><td align="left">JOIN       → link data across tables</td></tr>
+                <tr><td align="left">NULL       → column exists but has no value</td></tr>
+                <tr><td align="left">ALTER TABLE → change the shape of every row</td></tr>
+            </table>
+        >];
+
+        sql_row [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+                <tr><td bgcolor="#5B9BD5" colspan="2" align="center"><font color="white"><b>productos — one laptop row</b></font></td></tr>
+                <tr><td align="left">producto_id</td>    <td align="left">42</td></tr>
+                <tr><td align="left">nombre</td>         <td align="left">"Dell Laptop Pro 900"</td></tr>
+                <tr><td align="left">precio</td>         <td align="left">899.99</td></tr>
+                <tr><td align="left">stock</td>          <td align="left">45</td></tr>
+                <tr><td align="left">categoria_id</td>   <td align="left">1</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">ram_gb</td>         <td bgcolor="#C6EFCE" align="left">16</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">cpu</td>            <td bgcolor="#C6EFCE" align="left">"Intel i7-1355U"</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">storage_gb</td>     <td bgcolor="#C6EFCE" align="left">512</td></tr>
+                <tr><td bgcolor="#FFEB9C" align="left">resolution</td>     <td bgcolor="#FFEB9C" align="left"><font color="#999999">NULL</font></td></tr>
+                <tr><td bgcolor="#FFEB9C" align="left">panel_type</td>     <td bgcolor="#FFEB9C" align="left"><font color="#999999">NULL</font></td></tr>
+                <tr><td bgcolor="#FFC7CE" align="left">dpi</td>            <td bgcolor="#FFC7CE" align="left"><font color="#999999">NULL</font></td></tr>
+                <tr><td bgcolor="#FFC7CE" align="left">wireless</td>       <td bgcolor="#FFC7CE" align="left"><font color="#999999">NULL</font></td></tr>
+                <tr><td bgcolor="#E2EFDA" align="left">vram_gb</td>        <td bgcolor="#E2EFDA" align="left"><font color="#999999">NULL</font></td></tr>
+                <tr><td bgcolor="#D9D9D9" align="left">pages_per_min</td>  <td bgcolor="#D9D9D9" align="left"><font color="#999999">NULL</font></td></tr>
+            </table>
+        >];
+    }
+
+    subgraph cluster_mongo {
+        label=<<b>Document (MongoDB)</b>>;
+        bgcolor="#FFF2CC";
+        color="#E36C09";
+        fontsize=12;
+
+        mongo_concepts [label=<
+            <table border="0" cellborder="0" cellspacing="0" cellpadding="3">
+                <tr><td bgcolor="#FCE4D6" align="center"><b>Concepts</b></td></tr>
+                <tr><td align="left">Database    → Database</td></tr>
+                <tr><td align="left">Collection  → no fixed schema, docs vary</td></tr>
+                <tr><td align="left">Document    → one record (JSON)</td></tr>
+                <tr><td align="left">Field       → exists only if relevant</td></tr>
+                <tr><td align="left">Embed / $in → related data in doc or app-layer lookup</td></tr>
+                <tr><td align="left">(field absent) → field simply doesn't exist</td></tr>
+                <tr><td align="left">$set        → add/change a field on any document</td></tr>
+            </table>
+        >];
+
+        mongo_doc [label=<
+            <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+                <tr><td bgcolor="#E36C09" colspan="2" align="center"><font color="white"><b>productos — same laptop, as a document</b></font></td></tr>
+                <tr><td align="left">_id</td>      <td align="left">42  <i>← same as producto_id</i></td></tr>
+                <tr><td align="left">nombre</td>   <td align="left">"Dell Laptop Pro 900"</td></tr>
+                <tr><td align="left">precio</td>   <td align="left">899.99</td></tr>
+                <tr><td align="left">stock</td>    <td align="left">45</td></tr>
+                <tr><td align="left">categoria</td><td align="left">"Laptops"</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">specs</td><td bgcolor="#C6EFCE" align="left">{</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">  </td>  <td bgcolor="#C6EFCE" align="left">ram_gb: 16,</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">  </td>  <td bgcolor="#C6EFCE" align="left">cpu: "Intel i7-1355U",</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">  </td>  <td bgcolor="#C6EFCE" align="left">storage_gb: 512,</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">  </td>  <td bgcolor="#C6EFCE" align="left">battery_hours: 10</td></tr>
+                <tr><td bgcolor="#C6EFCE" align="left">  </td>  <td bgcolor="#C6EFCE" align="left">}</td></tr>
+            </table>
+        >];
+    }
+
+    note [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="5">
+            <tr><td bgcolor="#7030A0" align="center"><font color="white"><b>The monitor document — different shape, same collection</b></font></td></tr>
+            <tr><td align="left">{ _id: 77, nombre: "LG Monitor Ultra", categoria: "Monitores",</td></tr>
+            <tr><td align="left">  specs: { resolution: "3840x2160", panel_type: "IPS",</td></tr>
+            <tr><td align="left">           refresh_hz: 144, ports: ["HDMI 2.1", "USB-C"] } }</td></tr>
+            <tr><td align="left"> </td></tr>
+            <tr><td align="left">No ram_gb. No dpi. No NULL columns. Just what the monitor needs.</td></tr>
+        </table>
+    >];
+
+    sql_concepts -> sql_row [style=invis];
+    mongo_concepts -> mongo_doc [style=invis];
+    sql_row -> note [label="same product\ndifferent model" style=dashed color="#7030A0" fontcolor="#7030A0"];
+    mongo_doc -> note [style=dashed color="#7030A0"];
+}

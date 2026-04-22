@@ -1,0 +1,82 @@
+digraph "Attempt 1 — Nullable Column Explosion" {
+    rankdir=TB;
+    node [shape=plaintext, fontsize=10];
+    fontname="Helvetica";
+
+    label=<<b>Attempt 1: "Just add columns"</b><br/>Every product category adds more NULLs to every other row.<br/><font color="#CC0000">⚠ Violates 1NF — columns have no consistent meaning across rows (repeating group by category).</font>>;
+    labelloc=t;
+    fontsize=13;
+
+    productos [label=<
+        <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+            <tr><td bgcolor="#5B9BD5" align="center"><font color="white"><b>productos</b></font></td></tr>
+
+            <tr><td bgcolor="#DAEEF3" align="left"><b>producto_id   SERIAL PRIMARY KEY</b></td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">nombre        VARCHAR(200)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">precio        DECIMAL(10,2)</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">stock         INT</td></tr>
+            <tr><td bgcolor="#DAEEF3" align="left">categoria_id  INT FK</td></tr>
+
+            <tr><td bgcolor="#C6EFCE" align="left"><i>── Laptop specs ──────────────────</i></td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">ram_gb        INT          NULL</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">cpu           VARCHAR(100) NULL</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">storage_gb    INT          NULL</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">screen_inch   DECIMAL(4,1) NULL</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">battery_hours INT          NULL</td></tr>
+
+            <tr><td bgcolor="#FFEB9C" align="left"><i>── Monitor specs ─────────────────</i></td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">resolution    VARCHAR(20)  NULL</td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">panel_type    VARCHAR(30)  NULL</td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">refresh_hz    INT          NULL</td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">ports         TEXT         NULL</td></tr>
+
+            <tr><td bgcolor="#FFC7CE" align="left"><i>── Mouse specs ───────────────────</i></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">dpi           INT          NULL</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">wireless      BOOLEAN      NULL</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">sensor_type   VARCHAR(50)  NULL</td></tr>
+
+            <tr><td bgcolor="#E2EFDA" align="left"><i>── GPU specs ─────────────────────</i></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">vram_gb       INT          NULL</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">tdp_watts     INT          NULL</td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">connector     VARCHAR(30)  NULL</td></tr>
+
+            <tr><td bgcolor="#D9D9D9" align="left"><i>── Printer specs  ────────────────</i></td></tr>
+            <tr><td bgcolor="#D9D9D9" align="left">pages_per_min INT          NULL</td></tr>
+            <tr><td bgcolor="#D9D9D9" align="left">color_print   BOOLEAN      NULL</td></tr>
+            <tr><td bgcolor="#D9D9D9" align="left">cartridge_type VARCHAR(50) NULL</td></tr>
+        </table>
+    >];
+
+    laptop_row [label=<
+        <table border="1" cellborder="0" cellspacing="2" cellpadding="4">
+            <tr><td bgcolor="#888888" align="center"><font color="white"><b>Laptop row (real data)</b></font></td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">ram_gb = 16</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">cpu = "Intel i7-1355U"</td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">storage_gb = 512</td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">resolution = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">panel_type = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">dpi = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">wireless = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">vram_gb = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#D9D9D9" align="left">pages_per_min = <font color="#999999">NULL</font></td></tr>
+        </table>
+    >];
+
+    monitor_row [label=<
+        <table border="1" cellborder="0" cellspacing="2" cellpadding="4">
+            <tr><td bgcolor="#888888" align="center"><font color="white"><b>Monitor row (real data)</b></font></td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">ram_gb = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">cpu = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#C6EFCE" align="left">storage_gb = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">resolution = "3840x2160"</td></tr>
+            <tr><td bgcolor="#FFEB9C" align="left">panel_type = "IPS"</td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">dpi = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#FFC7CE" align="left">wireless = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#E2EFDA" align="left">vram_gb = <font color="#999999">NULL</font></td></tr>
+            <tr><td bgcolor="#D9D9D9" align="left">pages_per_min = <font color="#999999">NULL</font></td></tr>
+        </table>
+    >];
+
+    productos -> laptop_row  [label="Laptop\nrow" style=dashed color="#888888"];
+    productos -> monitor_row [label="Monitor\nrow" style=dashed color="#888888"];
+}
