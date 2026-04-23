@@ -10,6 +10,7 @@ Workshop práctico hands-on con PostgreSQL, MongoDB, Docker y pgcli.
 Al finalizar este workshop sabrás:
 
 **Módulo 1 — Normalización e Índices**
+
 1. Identificar problemas en esquemas denormalizados
 2. Normalizar una base de datos hasta 3FN
 3. Usar EXPLAIN para diagnosticar consultas lentas
@@ -17,6 +18,7 @@ Al finalizar este workshop sabrás:
 5. Medir mejoras de rendimiento (antes/después)
 
 **Módulo 2 — SQL Fundamentals**
+
 6. DDL y DML: ALTER, INSERT RETURNING, DELETE con NOT EXISTS
 7. JOINs: INNER, LEFT, multi-tabla, agregación
 8. Vistas actualizables vs no-actualizables
@@ -26,6 +28,7 @@ Al finalizar este workshop sabrás:
 12. Transacciones, ROLLBACK, SAVEPOINTs y niveles de aislamiento
 
 **Módulo 3 — MongoDB y Sistemas Híbridos**
+
 13. Por qué el modelo relacional falla con datos de forma variable
 14. El modelo de documentos: colecciones, campos, subdocumentos
 15. CRUD en MongoDB: insertOne, find, updateOne, deleteOne
