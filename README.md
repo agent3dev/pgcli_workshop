@@ -127,9 +127,9 @@ sudo make hybrid             # demo de consulta híbrida Postgres + MongoDB
 | `show dbs` | Listar bases de datos |
 | `use workshop` | Cambiar a la base workshop |
 | `show collections` | Listar colecciones |
-| `db.collection.find().pretty()` | Output formateado |
-| `db.collection.countDocuments()` | Contar documentos |
-| `db.collection.findOne()` | Primer documento |
+| `db.productos.find().pretty()` | Output formateado |
+| `db.productos.countDocuments()` | Contar documentos |
+| `db.productos.findOne()` | Primer documento |
 | `load('mongo/archivo.js')` | Ejecutar un script |
 | `exit` | Salir |
 
