@@ -1,212 +1,186 @@
 # Workshop de Bases de Datos
-**Normalización y Optimización con Índices**
+**PostgreSQL, SQL Fundamentals y MongoDB — Sistemas Híbridos**
 
-Workshop práctico hands-on con PostgreSQL, Docker y pgcli.
+Workshop práctico hands-on con PostgreSQL, MongoDB, Docker y pgcli.
 
 ---
 
-## 🎯 Objetivos
+## Objetivos
 
 Al finalizar este workshop sabrás:
 
-1. ✅ Identificar problemas en esquemas denormalizados
-2. ✅ Normalizar una base de datos hasta 3FN
-3. ✅ Usar EXPLAIN para diagnosticar consultas lentas
-4. ✅ Implementar índices apropiados (B-Tree, GIN, parciales)
-5. ✅ Medir mejoras de rendimiento (antes/después)
-6. ✅ Comprender trade-offs de diferentes tipos de índices
+**Módulo 1 — Normalización e Índices**
+1. Identificar problemas en esquemas denormalizados
+2. Normalizar una base de datos hasta 3FN
+3. Usar EXPLAIN para diagnosticar consultas lentas
+4. Implementar índices apropiados (B-Tree, GIN, parciales)
+5. Medir mejoras de rendimiento (antes/después)
+
+**Módulo 2 — SQL Fundamentals**
+6. DDL y DML: ALTER, INSERT RETURNING, DELETE con NOT EXISTS
+7. JOINs: INNER, LEFT, multi-tabla, agregación
+8. Vistas actualizables vs no-actualizables
+9. Funciones SQL y PL/pgSQL
+10. Procedures y state machines
+11. Triggers de auditoría y validación
+12. Transacciones, ROLLBACK, SAVEPOINTs y niveles de aislamiento
+
+**Módulo 3 — MongoDB y Sistemas Híbridos**
+13. Por qué el modelo relacional falla con datos de forma variable
+14. El modelo de documentos: colecciones, campos, subdocumentos
+15. CRUD en MongoDB: insertOne, find, updateOne, deleteOne
+16. Querying: dot notation, arrays, `$exists`, `$in`
+17. Aggregation pipeline: `$match`, `$group`, `$sort`, `$project`, `$unwind`
+18. Sistema híbrido: PostgreSQL (transacciones) + MongoDB (catálogo)
+19. Closing the loop: por qué la herramienta importa
 
 ---
 
-## 🚀 Setup Rápido
+## Setup Rápido
 
 ### Prerrequisitos
-
-**Recomendado**: Ubuntu 20.04+ o Debian-based Linux
 
 - Docker instalado (`sudo apt install docker.io`)
 - Terminal/consola
 - **¡Eso es todo!**
 
-### Instalación (3 pasos)
+### Módulos 1 y 2 — Solo PostgreSQL
 
 ```bash
-# 1. Descomprimir el workshop
-unzip workshop.zip
-cd workshop
-
-# 2. Construir e iniciar (solo primera vez, tarda ~2 minutos)
+# Primera vez
 sudo make setup
+sudo make reset          # esquema malo (Módulo 1)
+# o bien:
+sudo make reset-normalized  # esquema normalizado (Módulo 2)
 
-# 3. Cargar datos iniciales
-sudo make reset
+# Abrir shell SQL
+sudo make shell
 ```
 
-**¡Listo!** Ahora puedes empezar.
+### Módulo 3 — Agregar MongoDB
 
-<details>
-<summary>Método alternativo (separar build y start)</summary>
-
-En lugar de `sudo make setup`, puedes ejecutar por separado:
+Después de tener PostgreSQL con el esquema normalizado:
 
 ```bash
-sudo make build     # Construir imagen
-sudo make start     # Crear y arrancar contenedor
-sudo make reset     # Cargar datos
+sudo make mongo-start    # levantar MongoDB
+sudo make mongo-seed     # poblar MongoDB desde el catálogo de Postgres
+sudo make mongosh        # abrir shell de MongoDB
 ```
-</details>
+
+Verificar que quedó bien:
+```js
+db.productos.countDocuments()                  // debe dar 100,000
+db.productos.findOne({ categoria: "Laptops" }) // inspeccionar un documento
+```
 
 ---
 
-## 📚 Comandos Principales
+## Comandos Make
 
 ```bash
-sudo make setup      # Construir + iniciar (primera vez - hace todo!)
-sudo make build      # Construir contenedor
-sudo make start      # Iniciar workshop
-sudo make shell      # Abrir pgcli (SQL shell with auto-complete)
-sudo make pgadmin    # Abrir pgAdmin web interface
-sudo make reset      # Resetear BD a estado inicial (p=N o=N para tamaño dataset)
-sudo make benchmark  # Medir rendimiento de queries
-sudo make logs       # Ver logs de PostgreSQL
-sudo make bash       # Abrir bash shell en el contenedor
-sudo make stop       # Detener contenedor
-sudo make clean      # Borrar todo (incluyendo datos)
+# PostgreSQL
+sudo make setup              # construir + iniciar (primera vez)
+sudo make build              # construir imagen
+sudo make start              # iniciar contenedores
+sudo make shell              # abrir pgcli (SQL shell con autocomplete)
+sudo make psql               # abrir psql
+sudo make pgadmin            # info de acceso a pgAdmin web (http://localhost:80)
+sudo make reset              # esquema denormalizado — Módulo 1
+sudo make reset-normalized   # esquema normalizado — Módulos 2 y 3
+sudo make benchmark          # medir rendimiento de queries
+sudo make logs               # ver logs de PostgreSQL
+sudo make bash               # bash dentro del contenedor
+sudo make stop               # detener contenedores
+sudo make clean              # borrar todo (contenedores + datos)
+
+# MongoDB
+sudo make mongo-start        # levantar MongoDB
+sudo make mongo-seed         # poblar desde Postgres (100k documentos)
+sudo make mongosh            # abrir shell de MongoDB
+sudo make mongo-stop         # detener MongoDB
+sudo make hybrid             # demo de consulta híbrida Postgres + MongoDB
 ```
 
-> **Nota**: Si ya agregaste tu usuario al grupo docker (`sudo usermod -aG docker $USER`), puedes omitir `sudo` en todos los comandos.
+> Si agregaste tu usuario al grupo docker (`sudo usermod -aG docker $USER`), puedes omitir `sudo`.
 
 ---
 
-## 📖 Comandos Útiles en pgcli
+## Comandos Útiles en pgcli
 
-```sql
-\?              -- Ayuda
-\l              -- Listar bases de datos
-\dt             -- Listar tablas
-\d tabla        -- Describir tabla
-\di             -- Listar índices
-\timing on      -- Activar cronómetro
-\x auto         -- Auto-expandir resultados
-\q              -- Salir
-\i archivo.sql  -- Ejecutar archivo SQL
-```
+| Comando | Qué hace |
+|---------|----------|
+| `\dt` | Listar tablas |
+| `\d tabla` | Describir tabla |
+| `\di` | Listar índices |
+| `\timing on/off` | Activar/desactivar cronómetro |
+| `\i archivo.sql` | Ejecutar archivo SQL |
+| `F3` | Alternar modo multi-línea |
+| `\q` | Salir |
+
+## Comandos Útiles en mongosh
+
+| Comando | Qué hace |
+|---------|----------|
+| `show dbs` | Listar bases de datos |
+| `use workshop` | Cambiar a la base workshop |
+| `show collections` | Listar colecciones |
+| `db.collection.find().pretty()` | Output formateado |
+| `db.collection.countDocuments()` | Contar documentos |
+| `db.collection.findOne()` | Primer documento |
+| `load('mongo/archivo.js')` | Ejecutar un script |
+| `exit` | Salir |
 
 ---
 
-## 📂 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 workshop/
-├── Dockerfile                  # Configuración del contenedor
-├── Makefile                    # Comandos make
-├── README.md                   # Este archivo
-├── reset-db.sh                 # Script para resetear BD
-├── benchmark.sh                # Script para medir rendimiento
+├── Dockerfile
+├── Makefile
+├── README.md
+├── reset-db.sh
+├── benchmark.sh
 │
-├── sql/                        # Scripts SQL
-│   ├── 00_extensions.sql      # Extensiones PostgreSQL
-│   ├── 01_bad_schema.sql      # Schema malo (inicio)
-│   ├── 02_normalized_schema.sql # Solución normalización
-│   ├── 03_indexes.sql          # Solución índices
-│   ├── 04_migration.sql        # Migración de datos (ejecutar después de 01, antes de 02)
-│   └── queries/
-│       ├── slow.sql            # Queries sin optimizar
-│       └── fast.sql            # Queries optimizadas
+├── sql/                          # Scripts SQL
+│   ├── 00_extensions.sql
+│   ├── 01_bad_schema.sql         # Esquema denormalizado (Módulo 1)
+│   ├── 02_normalized_schema.sql  # Esquema normalizado (Módulos 2 y 3)
+│   ├── 03_indexes.sql            # Índices
+│   ├── 04_migration.sql          # Migración del esquema malo al normalizado
+│   ├── 05_ddl.sql  →  12_transactions.sql   # Ejercicios Módulo 2
+│   └── 13_sql_hits_a_wall.sql    # El problema que introduce MongoDB
 │
-├── scripts/                    # Scripts Python
-│   └── generate_bad_data.py   # Generador de datos
+├── mongo/                        # Scripts MongoDB (Módulo 3)
+│   ├── 01_document_model.js      # Ejercicio 14 — modelo de documentos
+│   ├── 02_crud.js                # Ejercicio 15 — CRUD
+│   ├── 03_querying.js            # Ejercicio 16 — querying
+│   ├── 04_aggregation.js         # Ejercicio 17 — aggregation pipeline
+│   ├── 05_hybrid.js              # Ejercicio 18 — sistema híbrido
+│   └── 06_closing_the_loop.js   # Ejercicio 19 — cierre
 │
-└── docs/                       # Documentación
-    ├── EXERCISES.md            # Ejercicios guiados
-    └── SOLUTIONS.md            # Soluciones completas
+├── scripts/                      # Scripts Python
+│   ├── generate_bad_data.py      # Datos para Módulo 1
+│   ├── generate_normalized_data.py  # Datos para Módulos 2 y 3
+│   ├── seed_mongo.py             # Poblar MongoDB desde Postgres
+│   └── hybrid_query.py           # Demo consulta híbrida
+│
+├── diagrams/                     # Diagramas de arquitectura
+│   ├── sql_vs_mongo.png
+│   ├── hybrid_architecture.png
+│   └── *.png / *.dot
+│
+└── docs/                         # Documentación
+    ├── WORKSHOP_SCRIPT.md        # Guía completa auto-guiada
+    ├── EXERCISES.md              # Ejercicios Módulos 1 y 2
+    ├── EXERCISES_SQL_FUNDAMENTALS.md
+    ├── SOLUTIONS.md
+    └── SOLUTIONS_SQL_FUNDAMENTALS.md
 ```
 
 ---
 
-## 🐛 Troubleshooting
-
-### Error: "permission denied" al ejecutar Docker
-
-Si ves este error, asegúrate de usar `sudo`:
-
-```bash
-sudo make setup
-sudo make shell
-```
-
-**Opcional**: Para no usar sudo en cada comando:
-
-```bash
-# Agregar tu usuario al grupo docker
-sudo usermod -aG docker $USER
-
-# Cerrar sesión y volver a entrar
-logout
-```
-
-### Container no inicia
-
-```bash
-sudo make clean
-sudo make setup
-```
-
-### PostgreSQL no responde
-
-```bash
-# Ver logs
-sudo make logs
-
-# Verificar que el container está corriendo
-sudo docker ps | grep workshop
-```
-
-### Quiero empezar de cero
-
-```bash
-sudo make clean      # Borra todo
-sudo make setup      # Reconstruye e inicia
-sudo make reset      # Carga datos
-```
-
-### No se crearon los datos
-
-```bash
-# Resetear de nuevo
-sudo make reset
-
-# Verificar
-sudo make shell
-```
-
-Dentro de pgcli:
-
-```sql
-SELECT COUNT(*) FROM productos;
--- Debe mostrar 500,000
-```
-
----
-
-## 💡 Tips
-
-### Ver progreso de queries largas
-
-```bash
-# En otra terminal
-make logs
-```
-
-### Exportar resultados
-
-```sql
-\o resultados.txt
-SELECT * FROM productos LIMIT 100;
-\o
-```
-
-### Conectar con herramienta externa
+## Conexión a PostgreSQL (herramientas externas)
 
 ```
 Host:     localhost
@@ -216,69 +190,73 @@ User:     workshop_user
 Password: workshop_pass
 ```
 
-### pgAdmin web interface
-
-pgAdmin corre en un contenedor separado.
-
-Accede a pgAdmin en: http://localhost:80
-
-- Email: admin@workshop.com
-- Password: admin
-
-Usa `sudo make pgadmin` para ver las credenciales.
-
-**Nota**: El contenedor incluye un servidor pre-configurado para conectarse a PostgreSQL usando `host.docker.internal` en el puerto 5432.
+pgAdmin: http://localhost:80 · Email: `admin@workshop.com` · Password: `admin`
 
 ---
 
-## 📚 Recursos Adicionales
+## Troubleshooting
 
-- **Documentación PostgreSQL**: https://www.postgresql.org/docs/
-- **pgcli**: https://www.pgcli.com/
-- **EXPLAIN Visualizer**: https://explain.dalibo.com/
+### "permission denied" al ejecutar Docker
 
----
-
-## 🎓 Ejercicios Adicionales
-
-Ver `docs/EXERCISES.md` para ejercicios paso a paso.
-
-Ver `docs/SOLUTIONS.md` para soluciones completas.
-
----
-
-## 🤝 Soporte
-
-Si tienes problemas:
-
-1. Revisa la sección **Troubleshooting** arriba
-2. Verifica logs: `sudo make logs`
-3. Pregunta al instructor
-
----
-
-## 💻 Requisitos del Sistema
-
-**Sistema Operativo**: Ubuntu 20.04+ (recomendado) o Debian-based Linux
-
-**Instalación de Docker**:
 ```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install docker.io
-
-# Verificar
-sudo docker --version
+sudo make setup
+# o agregar tu usuario al grupo docker:
+sudo usermod -aG docker $USER && logout
 ```
 
-**Recursos Mínimos**:
-- RAM: 4GB disponible
-- Disco: 2GB espacio libre
-- Procesador: 2 cores
+### Contenedor no inicia
+
+```bash
+sudo make clean && sudo make setup
+```
+
+### PostgreSQL no responde
+
+```bash
+sudo make logs
+sudo docker ps | grep workshop
+```
+
+### MongoDB no conecta desde mongosh
+
+```bash
+# Verificar que workshop-mongo está corriendo
+docker ps | grep mongo
+# Verificar que ambos contenedores están en la misma red
+docker network inspect workshop-net
+```
+
+### Empezar de cero
+
+```bash
+sudo make clean       # borra contenedores y volúmenes
+sudo make setup       # reconstruye
+sudo make reset-normalized
+sudo make mongo-start && sudo make mongo-seed
+```
+
+### Verificar datos cargados
+
+En pgcli:
+```sql
+SELECT COUNT(*) FROM productos;   -- 100,000
+SELECT COUNT(*) FROM pedidos;     -- 50,000
+```
+
+En mongosh:
+```js
+db.productos.countDocuments()     // 100,000
+```
 
 ---
 
-**¡Disfruta el workshop!** 🚀
+## Recursos Adicionales
 
-**Plataforma recomendada**: Ubuntu 20.04+
-**Versión**: 2.0 | Fecha: 2025-10-22
+- [Documentación PostgreSQL](https://www.postgresql.org/docs/)
+- [pgcli](https://www.pgcli.com/)
+- [EXPLAIN Visualizer](https://explain.dalibo.com/)
+- [Documentación MongoDB](https://www.mongodb.com/docs/)
+
+---
+
+**Versión**: 3.0 | Fecha: 2026-04-23
