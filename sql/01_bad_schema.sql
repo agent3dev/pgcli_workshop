@@ -14,9 +14,9 @@ CREATE TABLE pedidos_completos (
     cliente_codigo_postal VARCHAR(10),
 
     -- Product 1
-    producto1_nombre VARCHAR(200),
+    producto1_nombre VARCHAR(200) NOT NULL,
     producto1_descripcion TEXT,
-    producto1_precio DECIMAL(10,2),
+    producto1_precio DECIMAL(10,2) NOT NULL,
     producto1_cantidad INT,
 
     -- Product 2 (what if they order 3+ products?!)
